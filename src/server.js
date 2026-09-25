@@ -69,7 +69,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running at: http://localhost:${PORT}`);
-  console.log(`Swagger Docs available at: http://localhost:${PORT}/api-docs`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
+  console.log(`Swagger Docs available at: /api-docs`);
 });
