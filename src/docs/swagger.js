@@ -81,6 +81,114 @@ export const swaggerDocument = {
           }
         }
       },
+      AdminLoginRequest: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'admin@knfinance.com'
+          },
+          password: {
+            type: 'string',
+            example: 'password123'
+          }
+        }
+      },
+      AdminLoginResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'Admin login successful' },
+          token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          user: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '66f3a987b654c321d012e999' },
+              username: { type: 'string', example: 'admin01' },
+              name: { type: 'string', example: 'Admin One' },
+              email: { type: 'string', example: 'admin@knfinance.com' },
+              role: { type: 'string', example: 'admin' },
+              status: { type: 'string', example: 'active' }
+            }
+          }
+        }
+      },
+      ForgotPasswordRequest: {
+        type: 'object',
+        required: ['email'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'employee@knfinance.com'
+          }
+        }
+      },
+      VerifyOtpRequest: {
+        type: 'object',
+        required: ['email', 'otp'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'employee@knfinance.com'
+          },
+          otp: {
+            type: 'string',
+            minLength: 6,
+            maxLength: 6,
+            example: '573469'
+          }
+        }
+      },
+      VerifyOtpResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'OTP verified successfully' },
+          resetToken: { type: 'string', example: 'b5e1a2f3c4d5e6f7a8b9c0d1e2f3a4b5...' }
+        }
+      },
+      ResendOtpRequest: {
+        type: 'object',
+        required: ['email'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'employee@knfinance.com'
+          }
+        }
+      },
+      ResetPasswordRequest: {
+        type: 'object',
+        required: ['resetToken', 'newPassword', 'confirmPassword'],
+        properties: {
+          resetToken: {
+            type: 'string',
+            example: 'b5e1a2f3c4d5e6f7a8b9c0d1e2f3a4b5...'
+          },
+          newPassword: {
+            type: 'string',
+            minLength: 8,
+            example: 'Admin@123'
+          },
+          confirmPassword: {
+            type: 'string',
+            minLength: 8,
+            example: 'Admin@123'
+          }
+        }
+      },
+      GenericSuccessResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'Operation completed successfully' }
+        }
+      },
       CreateAdminRequest: {
         type: 'object',
         required: ['username', 'password', 'name', 'email', 'phone'],
@@ -200,7 +308,7 @@ export const swaggerDocument = {
     },
     {
       name: 'Authentication',
-      description: 'Super Admin login & JWT generation'
+      description: 'Super Admin login & admin @ JWT generation'
     },
     {
       name: 'Super Admin - Admins',
@@ -308,6 +416,221 @@ export const swaggerDocument = {
                 schema: {
                   $ref: '#/components/schemas/ErrorResponse'
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/auth/login': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Admin Login',
+        description: 'Authenticate as an Admin using email and password to obtain a JWT bearer token.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/AdminLoginRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Login successful',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/AdminLoginResponse'
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Missing email or password',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Invalid credentials',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Admin account is inactive',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/auth/forgot-password': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Forgot Password - Request OTP',
+        description: 'Generates a 6-digit OTP and dispatches it to the registered Admin email address. Responds with consistent anti-enumeration message.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ForgotPasswordRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Verification OTP dispatched',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/GenericSuccessResponse'
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid email address',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          429: {
+            description: 'Resend cooldown in effect (60s)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/auth/resend-otp': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Resend Password Reset OTP',
+        description: 'Issues a fresh 6-digit OTP code subject to a 60-second cooldown period.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ResendOtpRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'New OTP dispatched',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GenericSuccessResponse' }
+              }
+            }
+          },
+          429: {
+            description: 'Cooldown period active (wait 60s)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/auth/verify-otp': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Verify 6-Digit OTP',
+        description: 'Validates the submitted OTP against the stored cryptographic hash. Returns a short-lived reset token upon success.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/VerifyOtpRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'OTP verified successfully; resetToken issued',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/VerifyOtpResponse'
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid or expired OTP',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          429: {
+            description: 'Maximum attempts (5) exceeded',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/auth/reset-password': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Set New Password',
+        description: 'Updates the Admin password using the verified reset token. Hashes new password with bcrypt and invalidates the reset session.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ResetPasswordRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Password reset successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/GenericSuccessResponse'
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid/expired token, password mismatch, or weak password',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
               }
             }
           }
