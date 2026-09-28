@@ -298,6 +298,275 @@ export const swaggerDocument = {
             format: 'date-time'
           }
         }
+      },
+      LedgerInstallmentPaymentItem: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', example: '08-08' },
+          amount: { type: 'number', example: 500 },
+          paymentType: { type: 'string', enum: ['Cash', 'UPI', 'Card'], example: 'Cash' }
+        }
+      },
+      LedgerBorrowerRowResponse: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '66f3b111a123b456c789d001' },
+          sNo: { type: 'number', example: 1 },
+          date: { type: 'string', example: '03-08' },
+          borrowDate: { type: 'string', example: '03-08' },
+          nameTelugu: { type: 'string', example: 'కృష్ణారావు' },
+          nameEnglish: { type: 'string', example: 'Krishna Rao' },
+          item: { type: 'string', example: 'బంగారు గాజులు' },
+          productItem: { type: 'string', example: 'బంగారు గాజులు' },
+          amount: { type: 'number', example: 15000 },
+          principalAmount: { type: 'number', example: 15000 },
+          initialRemaining: { type: 'number', example: 18900 },
+          interestRate: { type: 'number', example: 5 },
+          isClosed: { type: 'boolean', example: false },
+          totalPaid: { type: 'number', example: 2000 },
+          remainingBalance: { type: 'number', example: 16900 },
+          payments: {
+            type: 'object',
+            additionalProperties: { $ref: '#/components/schemas/LedgerInstallmentPaymentItem' },
+            example: {
+              '0': { date: '08-08', amount: 500, paymentType: 'Cash' },
+              '1': { date: '15-08', amount: 500, paymentType: 'Cash' }
+            }
+          }
+        }
+      },
+      FinanceBookActiveResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'Active finance book ledger retrieved successfully' },
+          data: {
+            type: 'object',
+            properties: {
+              ledgerBook: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', example: '66f3a987b654c321d012e111' },
+                  branchId: { type: 'string', example: 'NY-104' },
+                  title: { type: 'string', example: 'KN FINANCE - FINANCE BOOK LEDGER' },
+                  academicYear: { type: 'string', example: '2026-2027' },
+                  isActive: { type: 'boolean', example: true },
+                  version: { type: 'number', example: 1 }
+                }
+              },
+              dateColumns: {
+                type: 'array',
+                items: { type: 'string' },
+                example: ['08-08', '15-08', '22-08']
+              },
+              columns: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', example: '66f3b000a123b456c789d001' },
+                    columnIndex: { type: 'number', example: 0 },
+                    headerDate: { type: 'string', example: '08-08' },
+                    labelTelugu: { type: 'string', example: 'వాయిదా 1' }
+                  }
+                }
+              },
+              rows: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LedgerBorrowerRowResponse' }
+              },
+              totals: {
+                type: 'object',
+                properties: {
+                  principalAmount: { type: 'number', example: 15000 },
+                  totalPaid: { type: 'number', example: 2000 },
+                  remainingBalance: { type: 'number', example: 16900 }
+                }
+              }
+            }
+          }
+        }
+      },
+      CreateBorrowerRowRequest: {
+        type: 'object',
+        required: ['nameTelugu', 'productItem', 'principalAmount'],
+        properties: {
+          ledgerBookId: { type: 'string', example: '66f3a987b654c321d012e111' },
+          borrowDate: { type: 'string', example: '03-08' },
+          nameTelugu: { type: 'string', example: 'కృష్ణారావు' },
+          nameEnglish: { type: 'string', example: 'Krishna Rao' },
+          productItem: { type: 'string', example: 'బంగారు గాజులు' },
+          principalAmount: { type: 'number', example: 15000 },
+          interestRate: { type: 'number', example: 5 }
+        }
+      },
+      UpdateBorrowerRowRequest: {
+        type: 'object',
+        properties: {
+          borrowDate: { type: 'string', example: '03-08' },
+          nameTelugu: { type: 'string', example: 'కృష్ణారావు' },
+          nameEnglish: { type: 'string', example: 'Krishna Rao' },
+          productItem: { type: 'string', example: 'బంగారు గాజులు' },
+          principalAmount: { type: 'number', example: 16000 },
+          initialRemaining: { type: 'number', example: 20160 },
+          interestRate: { type: 'number', example: 5 },
+          applyFivePercentIncrement: { type: 'boolean', example: false }
+        }
+      },
+      UpdateBorrowerStatusRequest: {
+        type: 'object',
+        required: ['isClosed'],
+        properties: {
+          isClosed: { type: 'boolean', example: true }
+        }
+      },
+      BatchSaveRequest: {
+        type: 'object',
+        required: ['rows'],
+        properties: {
+          ledgerBookId: { type: 'string', example: '66f3a987b654c321d012e111' },
+          version: { type: 'number', example: 1 },
+          dateColumns: {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['08-08', '15-08', '22-08']
+          },
+          rows: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '66f3b111a123b456c789d001' },
+                sNo: { type: 'number', example: 1 },
+                date: { type: 'string', example: '03-08' },
+                nameTelugu: { type: 'string', example: 'కృష్ణారావు' },
+                nameEnglish: { type: 'string', example: 'Krishna Rao' },
+                item: { type: 'string', example: 'బంగారు గాజులు' },
+                amount: { type: 'number', example: 15000 },
+                initialRemaining: { type: 'number', example: 18900 },
+                interestRate: { type: 'number', example: 5 },
+                isClosed: { type: 'boolean', example: false },
+                payments: {
+                  type: 'object',
+                  example: {
+                    '0': { date: '08-08', amount: 500 },
+                    '1': { date: '15-08', amount: 500 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      EmployeeResponse: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string', example: '66f3c111a123b456c789d001' },
+          employeeId: { type: 'string', example: 'EMP001' },
+          fullName: { type: 'string', example: 'Ravi Kumar' },
+          age: { type: 'number', example: 28 },
+          phone: { type: 'string', example: '9876543210' },
+          altPhone: { type: 'string', example: '9123456780' },
+          email: { type: 'string', format: 'email', example: 'ravi@example.com' },
+          aadharCard: { type: 'string', example: 'XXXX-XXXX-1234' },
+          panCard: { type: 'string', example: 'ABCDE1234F' },
+          village: { type: 'string', example: 'Ravulapalem' },
+          assignedOperationalArea: { type: 'string', example: 'Area-01' },
+          joiningDate: { type: 'string', format: 'date-time' },
+          references: { type: 'string', example: 'Reference details' },
+          status: { type: 'string', enum: ['Active', 'Inactive'], example: 'Active' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' }
+        }
+      },
+      CreateEmployeeRequest: {
+        type: 'object',
+        required: ['fullName', 'age', 'phone', 'email', 'assignedOperationalArea', 'password'],
+        properties: {
+          employeeId: { type: 'string', example: 'EMP001' },
+          fullName: { type: 'string', example: 'Ravi Kumar' },
+          age: { type: 'number', example: 28 },
+          phone: { type: 'string', example: '9876543210' },
+          altPhone: { type: 'string', example: '9123456780' },
+          email: { type: 'string', format: 'email', example: 'ravi@example.com' },
+          aadharCard: { type: 'string', example: 'XXXX-XXXX-1234' },
+          panCard: { type: 'string', example: 'ABCDE1234F' },
+          village: { type: 'string', example: 'Ravulapalem' },
+          assignedOperationalArea: { type: 'string', example: 'Area-01' },
+          joiningDate: { type: 'string', example: '2026-09-28' },
+          references: { type: 'string', example: 'Reference details' },
+          password: { type: 'string', example: 'Initial@123' },
+          confirmPassword: { type: 'string', example: 'Initial@123' }
+        }
+      },
+      UpdateEmployeeRequest: {
+        type: 'object',
+        properties: {
+          fullName: { type: 'string', example: 'Ravi Kumar' },
+          age: { type: 'number', example: 29 },
+          phone: { type: 'string', example: '9876543210' },
+          altPhone: { type: 'string', example: '9123456780' },
+          email: { type: 'string', format: 'email', example: 'ravi@example.com' },
+          aadharCard: { type: 'string', example: 'XXXX-XXXX-1234' },
+          panCard: { type: 'string', example: 'ABCDE1234F' },
+          village: { type: 'string', example: 'Ravulapalem' },
+          assignedOperationalArea: { type: 'string', example: 'Area-02' },
+          joiningDate: { type: 'string', example: '2026-09-28' },
+          references: { type: 'string', example: 'Updated reference' }
+        }
+      },
+      UpdateEmployeeStatusRequest: {
+        type: 'object',
+        required: ['status'],
+        properties: {
+          status: { type: 'string', enum: ['Active', 'Inactive'], example: 'Inactive' }
+        }
+      },
+      ResetEmployeePasswordRequest: {
+        type: 'object',
+        required: ['newPassword'],
+        properties: {
+          newPassword: { type: 'string', example: 'NewPassword@123' }
+        }
+      },
+      EmployeeLoginRequest: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'ravi@example.com' },
+          password: { type: 'string', example: 'Initial@123' }
+        }
+      },
+      EmployeeLoginResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'Employee login successful' },
+          token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          employee: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '66f3c111a123b456c789d001' },
+              employeeId: { type: 'string', example: 'EMP001' },
+              fullName: { type: 'string', example: 'Ravi Kumar' },
+              email: { type: 'string', example: 'ravi@example.com' },
+              phone: { type: 'string', example: '9876543210' },
+              assignedOperationalArea: { type: 'string', example: 'Area-01' },
+              village: { type: 'string', example: 'Ravulapalem' },
+              status: { type: 'string', example: 'Active' }
+            }
+          }
+        }
+      },
+      RecordCollectionRequest: {
+        type: 'object',
+        required: ['borrowerId', 'amount'],
+        properties: {
+          borrowerId: { type: 'string', example: '66f3b111a123b456c789d001' },
+          amount: { type: 'number', example: 500 },
+          paymentDate: { type: 'string', example: '2026-09-28' },
+          paymentType: { type: 'string', enum: ['Cash', 'UPI', 'Card'], example: 'Cash' }
+        }
       }
     }
   },
@@ -313,8 +582,21 @@ export const swaggerDocument = {
     {
       name: 'Super Admin - Admins',
       description: 'Admin management endpoints (Super Admin only)'
+    },
+    {
+      name: 'Finance Book Ledger',
+      description: 'Operations Portal Finance Book (ఖాతా పుస్తకం) endpoints'
+    },
+    {
+      name: 'Admin - Employee Management',
+      description: 'Admin Portal - Employee registry, lifecycle, and credential reset'
+    },
+    {
+      name: 'Employee Portal',
+      description: 'Employee Portal - Authentication, field borrower routes, and collections'
     }
   ],
+
   paths: {
     '/': {
       get: {
@@ -1044,6 +1326,736 @@ export const swaggerDocument = {
           }
         }
       }
+    },
+    '/api/v1/finance-book/active': {
+      get: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Get active Finance Book ledger',
+        description: 'Retrieves the complete active ledger book, installment date columns, borrower rows, payment cells, and calculated grand totals.',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Active ledger retrieved successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FinanceBookActiveResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Unauthorized',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Forbidden - Admin only',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/finance-book/batch-save': {
+      post: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Batch save complete staged ledger state',
+        description: 'Saves date columns, borrower rows, and installment payments atomically in a single request. Recalculates balances and logs audit action.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/BatchSaveRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Ledger changes saved successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FinanceBookActiveResponse' }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid batch payload',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          409: {
+            description: 'Conflict - Stale ledger version',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/finance-book/columns': {
+      post: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Add next installment column',
+        description: 'Calculates the next weekly date (+7 days) from the last column and adds a sequential date column with Telugu installment label.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  ledgerBookId: { type: 'string', example: '66f3a987b654c321d012e111' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Installment column added successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Installment column added successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', example: '66f3b000a123b456c789d001' },
+                        columnIndex: { type: 'number', example: 3 },
+                        headerDate: { type: 'string', example: '29-08' },
+                        labelTelugu: { type: 'string', example: 'వాయిదా 4' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/finance-book/columns/{index}': {
+      delete: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Delete installment column',
+        description: 'Deletes the target column, removes its installment payments, shifts higher column indexes and payment indexes down by 1 atomically.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'index',
+            in: 'path',
+            required: true,
+            description: 'Column index to delete',
+            schema: { type: 'integer', example: 1 }
+          },
+          {
+            name: 'ledgerBookId',
+            in: 'query',
+            description: 'Optional ledger book ID',
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Column deleted and shifted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Column index 1 deleted successfully and remaining columns shifted' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        deletedColumnIndex: { type: 'number', example: 1 },
+                        remainingColumnsCount: { type: 'number', example: 2 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          404: {
+            description: 'Column index not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/finance-book/rows': {
+      post: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Create borrower row',
+        description: 'Adds a new borrower row, calculates initialRemaining (P * 1.20 * 1.05), assigns sequential sNo, and synchronizes with FinanceRecord.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateBorrowerRowRequest' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Borrower row created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Borrower row created successfully' },
+                    data: { $ref: '#/components/schemas/LedgerBorrowerRowResponse' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/finance-book/rows/{id}': {
+      patch: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Update borrower row',
+        description: 'Updates borrower details, handles principal adjustments, recalculates initial remaining, or applies +5% target increment.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Borrower row ObjectId',
+            schema: { type: 'string', example: '66f3b111a123b456c789d001' }
+          }
+        ],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateBorrowerRowRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Borrower row updated successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Borrower row updated successfully' },
+                    data: { $ref: '#/components/schemas/LedgerBorrowerRowResponse' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      delete: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Delete borrower row',
+        description: 'Deletes the borrower row, associated payments, and automatically renumbers subsequent rows (sNo - 1).',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Borrower row ObjectId',
+            schema: { type: 'string', example: '66f3b111a123b456c789d001' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Borrower row deleted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Borrower row deleted successfully and serial numbers renumbered' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        deletedRowId: { type: 'string', example: '66f3b111a123b456c789d001' },
+                        deletedSNo: { type: 'number', example: 1 },
+                        remainingRowsCount: { type: 'number', example: 3 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/finance-book/rows/{id}/status': {
+      patch: {
+        tags: ['Finance Book Ledger'],
+        summary: 'Close or reopen borrower account',
+        description: 'Validates financial closure rules (remainingBalance <= 0 AND totalPaid > 0) before closing the borrower account.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Borrower row ObjectId',
+            schema: { type: 'string', example: '66f3b111a123b456c789d001' }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateBorrowerStatusRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Account status updated successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Account closed successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', example: '66f3b111a123b456c789d001' },
+                        sNo: { type: 'number', example: 1 },
+                        nameTelugu: { type: 'string', example: 'కృష్ణారావు' },
+                        isClosed: { type: 'boolean', example: true },
+                        totalPaid: { type: 'number', example: 18900 },
+                        remainingBalance: { type: 'number', example: 0 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Closure validation failed (remaining balance > 0 or total paid <= 0)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/auth/employee/login': {
+      post: {
+        tags: ['Employee Portal'],
+        summary: 'Employee portal login',
+        description: 'Authenticates active employees using email and bcrypt password. Returns JWT containing employeeId and tokenVersion.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/EmployeeLoginRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Employee login successful',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EmployeeLoginResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Invalid credentials',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Employee account is inactive',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/admin/employees': {
+      get: {
+        tags: ['Admin - Employee Management'],
+        summary: 'List employees with search and filters',
+        description: 'Lists active employees with optional search, village filter, area filter, status filter, and pagination.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by employeeId, name, phone, email, village' },
+          { name: 'village', in: 'query', schema: { type: 'string' }, description: 'Filter by village' },
+          { name: 'assignedOperationalArea', in: 'query', schema: { type: 'string' }, description: 'Filter by operational area' },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['Active', 'Inactive'] }, description: 'Filter by status' },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Page number' },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 }, description: 'Items per page' }
+        ],
+        responses: {
+          200: {
+            description: 'Employees retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employees retrieved successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        employees: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/EmployeeResponse' }
+                        },
+                        pagination: {
+                          type: 'object',
+                          properties: {
+                            total: { type: 'integer', example: 1 },
+                            page: { type: 'integer', example: 1 },
+                            limit: { type: 'integer', example: 10 },
+                            totalPages: { type: 'integer', example: 1 }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          401: { description: 'Unauthorized' },
+          403: { description: 'Forbidden - Admin only' }
+        }
+      },
+      post: {
+        tags: ['Admin - Employee Management'],
+        summary: 'Create employee',
+        description: 'Admin creates a new employee account with initial password, assigned operational area, and auto-generated EMP### ID.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateEmployeeRequest' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Employee created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employee created successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        employee: { $ref: '#/components/schemas/EmployeeResponse' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          400: { description: 'Validation error' },
+          409: { description: 'Duplicate employee email or employeeId' }
+        }
+      }
+    },
+    '/api/v1/admin/employees/{id}': {
+      put: {
+        tags: ['Admin - Employee Management'],
+        summary: 'Update employee profile',
+        description: 'Updates employee details (does NOT allow password updates through this endpoint).',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'Employee ObjectId', schema: { type: 'string' } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateEmployeeRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Employee updated successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employee updated successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        employee: { $ref: '#/components/schemas/EmployeeResponse' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          404: { description: 'Employee not found' },
+          409: { description: 'Email conflict' }
+        }
+      },
+      delete: {
+        tags: ['Admin - Employee Management'],
+        summary: 'Archive/Delete employee',
+        description: 'Soft deletes / archives an employee and immediately revokes their active sessions.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'Employee ObjectId', schema: { type: 'string' } }
+        ],
+        responses: {
+          200: {
+            description: 'Employee archived successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employee archived successfully' }
+                  }
+                }
+              }
+            }
+          },
+          404: { description: 'Employee not found' }
+        }
+      }
+    },
+    '/api/v1/admin/employees/{id}/status': {
+      patch: {
+        tags: ['Admin - Employee Management'],
+        summary: 'Change employee status',
+        description: 'Toggles status between Active and Inactive. When deactivating (Active -> Inactive), tokenVersion is incremented to revoke active JWT sessions immediately.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'Employee ObjectId', schema: { type: 'string' } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateEmployeeStatusRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Status changed successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employee status changed to Inactive successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        employee: { $ref: '#/components/schemas/EmployeeResponse' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          400: { description: 'Invalid status' },
+          404: { description: 'Employee not found' }
+        }
+      }
+    },
+    '/api/v1/admin/employees/{id}/reset-password': {
+      post: {
+        tags: ['Admin - Employee Management'],
+        summary: 'Admin resets employee password',
+        description: 'Direct Admin password reset. Hashes the new password with bcrypt and increments tokenVersion to revoke all existing sessions immediately.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'Employee ObjectId', schema: { type: 'string' } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ResetEmployeePasswordRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Employee password reset successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employee password reset successfully' }
+                  }
+                }
+              }
+            }
+          },
+          400: { description: 'Invalid new password format' },
+          404: { description: 'Employee not found' }
+        }
+      }
+    },
+    '/api/v1/employee/profile': {
+      get: {
+        tags: ['Employee Portal'],
+        summary: 'Get employee profile',
+        description: 'Returns authenticated employee profile details.',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Profile retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Employee profile retrieved successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        profile: { $ref: '#/components/schemas/EmployeeResponse' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          401: { description: 'Unauthorized or tokenVersion revoked' }
+        }
+      }
+    },
+    '/api/v1/employee/assigned-borrowers': {
+      get: {
+        tags: ['Employee Portal'],
+        summary: 'Get assigned borrowers',
+        description: 'Returns active borrowers assigned to the authenticated employee operational area.',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Assigned borrowers retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Assigned borrowers retrieved successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        borrowers: {
+                          type: 'array',
+                          items: { type: 'object' }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          401: { description: 'Unauthorized or tokenVersion revoked' }
+        }
+      }
+    },
+    '/api/v1/employee/collections': {
+      post: {
+        tags: ['Employee Portal'],
+        summary: 'Record borrower installment collection',
+        description: 'Records daily/weekly field collection from assigned borrower. Updates financial balance and sets collectedBy to authenticated employee.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RecordCollectionRequest' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Collection recorded successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Collection recorded successfully' },
+                    data: { type: 'object' }
+                  }
+                }
+              }
+            }
+          },
+          400: { description: 'Invalid amount or closed borrower account' },
+          404: { description: 'Borrower record not found' }
+        }
+      }
     }
   }
 };
+
+

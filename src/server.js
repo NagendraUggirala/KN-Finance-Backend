@@ -5,6 +5,9 @@ import dns from 'node:dns';
 import connectDB from '../config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import financeBookRoutes from './routes/financeBookRoutes.js';
+import adminEmployeeRoutes from './routes/adminEmployeeRoutes.js';
+import employeeRoutes from './routes/employeeRoutes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerDocument } from './docs/swagger.js';
 
@@ -42,7 +45,16 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/superadmin', adminRoutes);
+app.use('/api/v1/finance-book', financeBookRoutes);
+app.use('/api/finance-book', financeBookRoutes);
+app.use('/api/v1/admin/employees', adminEmployeeRoutes);
+app.use('/api/admin/employees', adminEmployeeRoutes);
+app.use('/api/v1/employee', employeeRoutes);
+app.use('/api/employee', employeeRoutes);
+
+
 
 // Swagger Documentation Routes
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
