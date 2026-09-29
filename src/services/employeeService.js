@@ -6,6 +6,8 @@ import LedgerBorrowerRow from '../models/LedgerBorrowerRow.js';
 import LedgerInstallmentPayment from '../models/LedgerInstallmentPayment.js';
 import AuditLog from '../models/AuditLog.js';
 import { isValidObjectId } from '../utils/financeValidators.js';
+import { createAuditLog, AUDIT_ACTIONS } from './auditLogService.js';
+import { computeDiff } from '../utils/auditLogSanitizer.js';
 
 /**
  * Validates password strength: at least 8 characters with at least one number or symbol
@@ -119,10 +121,11 @@ export const createEmployee = async ({ data, adminUser }) => {
 
   await employee.save();
 
-  // Log audit
-  await AuditLog.create({
+  // Log audit automatically (Aadhaar & PAN are masked, password excluded)
+  await createAuditLog({
     userId: adminUser?.username || adminUser?.userId || 'admin',
-    action: 'CREATE_EMPLOYEE',
+    userRole: adminUser?.role || 'admin',
+    action: AUDIT_ACTIONS.CREATE,
     entityType: 'Employee',
     entityId: employee._id.toString(),
     details: {
@@ -243,6 +246,9 @@ export const updateEmployee = async ({ id, data, adminUser }) => {
     }
   }
 
+  // Snapshot previous state for safe before/after diff calculation
+  const previousEmployee = employee.toObject();
+
   if (data.fullName !== undefined) employee.fullName = data.fullName.trim();
   if (data.age !== undefined) employee.age = Number(data.age);
   if (data.phone !== undefined) employee.phone = data.phone.trim();
@@ -257,16 +263,17 @@ export const updateEmployee = async ({ id, data, adminUser }) => {
   employee.updatedBy = adminUser?.username || adminUser?.userId || 'admin';
   await employee.save();
 
-  // Log audit
-  await AuditLog.create({
+  // Log audit with safe before/after diff (Aadhaar & PAN are masked)
+  const diff = computeDiff(previousEmployee, employee);
+  await createAuditLog({
     userId: adminUser?.username || adminUser?.userId || 'admin',
-    action: 'UPDATE_EMPLOYEE',
+    userRole: adminUser?.role || 'admin',
+    action: AUDIT_ACTIONS.UPDATE,
     entityType: 'Employee',
     entityId: employee._id.toString(),
     details: {
       employeeId: employee.employeeId,
-      fullName: employee.fullName,
-      assignedOperationalArea: employee.assignedOperationalArea
+      ...diff
     }
   });
 
@@ -310,10 +317,11 @@ export const changeEmployeeStatus = async ({ id, status, adminUser }) => {
   employee.updatedBy = adminUser?.username || adminUser?.userId || 'admin';
   await employee.save();
 
-  // Log audit
-  await AuditLog.create({
+  // Log status change audit
+  await createAuditLog({
     userId: adminUser?.username || adminUser?.userId || 'admin',
-    action: 'CHANGE_EMPLOYEE_STATUS',
+    userRole: adminUser?.role || 'admin',
+    action: AUDIT_ACTIONS.STATUS_CHANGE,
     entityType: 'Employee',
     entityId: employee._id.toString(),
     details: {
@@ -361,9 +369,10 @@ export const resetEmployeePassword = async ({ id, newPassword, adminUser }) => {
   await employee.save();
 
   // Log audit without recording the password
-  await AuditLog.create({
+  await createAuditLog({
     userId: adminUser?.username || adminUser?.userId || 'admin',
-    action: 'RESET_EMPLOYEE_PASSWORD',
+    userRole: adminUser?.role || 'admin',
+    action: AUDIT_ACTIONS.PASSWORD_RESET,
     entityType: 'Employee',
     entityId: employee._id.toString(),
     details: {
@@ -405,9 +414,10 @@ export const archiveOrDeleteEmployee = async ({ id, adminUser }) => {
   await employee.save();
 
   // Log audit
-  await AuditLog.create({
+  await createAuditLog({
     userId: adminUser?.username || adminUser?.userId || 'admin',
-    action: 'DELETE_EMPLOYEE',
+    userRole: adminUser?.role || 'admin',
+    action: AUDIT_ACTIONS.DELETE,
     entityType: 'Employee',
     entityId: employee._id.toString(),
     details: {
@@ -442,12 +452,27 @@ export const employeeLogin = async ({ email, username, password }) => {
   }).select('+password');
 
   if (!employee) {
+    await createAuditLog({
+      action: AUDIT_ACTIONS.LOGIN_FAILED,
+      entityType: 'Employee',
+      userId: normalized,
+      userRole: 'employee',
+      details: { attemptedIdentifier: identifier, reason: 'Employee account not found' }
+    });
     const error = new Error('Invalid credentials');
     error.status = 401;
     throw error;
   }
 
   if (employee.status !== 'Active') {
+    await createAuditLog({
+      action: AUDIT_ACTIONS.LOGIN_FAILED,
+      entityType: 'Employee',
+      entityId: employee._id.toString(),
+      userId: employee.employeeId,
+      userRole: 'employee',
+      details: { employeeId: employee.employeeId, reason: 'Employee account inactive' }
+    });
     const error = new Error('Employee account is inactive. Please contact Admin.');
     error.status = 403;
     throw error;
@@ -455,6 +480,14 @@ export const employeeLogin = async ({ email, username, password }) => {
 
   const isMatch = await employee.comparePassword(password);
   if (!isMatch) {
+    await createAuditLog({
+      action: AUDIT_ACTIONS.LOGIN_FAILED,
+      entityType: 'Employee',
+      entityId: employee._id.toString(),
+      userId: employee.employeeId,
+      userRole: 'employee',
+      details: { employeeId: employee.employeeId, reason: 'Incorrect password' }
+    });
     const error = new Error('Invalid credentials');
     error.status = 401;
     throw error;
@@ -473,10 +506,11 @@ export const employeeLogin = async ({ email, username, password }) => {
     expiresIn: process.env.JWT_EXPIRES_IN || '1d'
   });
 
-  // Log audit
-  await AuditLog.create({
+  // Log successful employee login
+  await createAuditLog({
     userId: employee.employeeId,
-    action: 'EMPLOYEE_LOGIN',
+    userRole: 'employee',
+    action: AUDIT_ACTIONS.LOGIN,
     entityType: 'Employee',
     entityId: employee._id.toString(),
     details: {
@@ -602,12 +636,14 @@ export const recordCollection = async ({ employee, borrowerId, amount, paymentDa
   await financeRecord.save();
 
   // Log collection in AuditLog
-  await AuditLog.create({
+  await createAuditLog({
     userId: employee.employeeId || employee.userId || employee.id,
-    action: 'EMPLOYEE_COLLECTION',
+    userRole: 'employee',
+    action: AUDIT_ACTIONS.UPDATE,
     entityType: 'FinanceRecord',
     entityId: financeRecord._id.toString(),
     details: {
+      actionType: 'EMPLOYEE_COLLECTION',
       borrowerNameTelugu: financeRecord.borrowerNameTelugu,
       amount: numAmount,
       paymentDate: paymentDate || new Date().toISOString().split('T')[0],

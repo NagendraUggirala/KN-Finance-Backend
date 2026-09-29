@@ -9,12 +9,13 @@ import {
   updateRowStatus,
   deleteRow
 } from '../controllers/financeBookController.js';
-import { authenticateToken, requireAdminOrSuperAdmin } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireStaffOrAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Enforce authentication & admin authorization on all Finance Book endpoints
-router.use(authenticateToken, requireAdminOrSuperAdmin);
+// Enforce authentication & staff authorization (admin, superadmin, employee) on all Finance Book endpoints
+router.use(authenticateToken, requireStaffOrAdmin);
+
 
 // Ledger Active & Batch Save
 router.get('/active', getActiveLedger);

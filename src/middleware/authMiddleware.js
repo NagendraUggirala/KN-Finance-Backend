@@ -84,3 +84,17 @@ export const requireAdminOrSuperAdmin = (req, res, next) => {
   next();
 };
 
+/**
+ * Middleware to allow access to Staff (Employees, Admins, Super Admins)
+ */
+export const requireStaffOrAdmin = (req, res, next) => {
+  if (!req.user || !['admin', 'superadmin', 'employee'].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Authorized Staff only.'
+    });
+  }
+  next();
+};
+
+

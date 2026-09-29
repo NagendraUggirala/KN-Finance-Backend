@@ -43,8 +43,9 @@ export const syncRowToFinanceRecord = async ({ row, totalPaid = 0, remainingBala
         startDate: row.borrowDate,
         status,
         ledgerBookId: row.ledgerBookId,
-        createdBy: user?.username || 'admin'
+        createdBy: user?.employeeId || user?.username || 'admin'
       };
+
 
       const records = await FinanceRecord.create([recordData], { session });
       const createdRecord = records[0];

@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import Admin from '../models/Admin.js';
+import { createAuditLog, AUDIT_ACTIONS } from '../services/auditLogService.js';
+import { computeDiff } from '../utils/auditLogSanitizer.js';
 
 /**
  * Create a new Admin
@@ -48,6 +50,22 @@ export const createAdmin = async (req, res, next) => {
     });
 
     await admin.save();
+
+    // Audit log Admin creation automatically
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.CREATE,
+      entityType: 'Admin',
+      entityId: admin._id.toString(),
+      details: {
+        username: admin.username,
+        name: admin.name,
+        email: admin.email,
+        phone: admin.phone,
+        role: admin.role,
+        status: admin.status
+      }
+    });
 
     return res.status(201).json({
       success: true,
@@ -139,6 +157,9 @@ export const updateAdmin = async (req, res, next) => {
       });
     }
 
+    // Capture snapshot before mutations for before/after diff calculation
+    const previousAdmin = admin.toObject();
+
     const { username, name, email, phone, password } = req.body;
 
     // Check if new username conflicts with another Admin
@@ -178,6 +199,16 @@ export const updateAdmin = async (req, res, next) => {
     // (admin.role and admin.createdBy remain untouched)
 
     await admin.save();
+
+    // Log update audit with safe before/after diff
+    const diff = computeDiff(previousAdmin, admin);
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: 'Admin',
+      entityId: admin._id.toString(),
+      details: diff
+    });
 
     return res.status(200).json({
       success: true,
@@ -227,8 +258,21 @@ export const updateAdminStatus = async (req, res, next) => {
       });
     }
 
+    const previousStatus = admin.status;
     admin.status = status;
     await admin.save();
+
+    // Log status change audit
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.STATUS_CHANGE,
+      entityType: 'Admin',
+      entityId: admin._id.toString(),
+      details: {
+        previousStatus,
+        newStatus: status
+      }
+    });
 
     return res.status(200).json({
       success: true,
@@ -264,7 +308,25 @@ export const deleteAdmin = async (req, res, next) => {
       });
     }
 
+    const deletedAdminSnapshot = {
+      username: admin.username,
+      name: admin.name,
+      email: admin.email,
+      phone: admin.phone,
+      role: admin.role,
+      status: admin.status
+    };
+
     await Admin.findByIdAndDelete(adminId);
+
+    // Log delete audit
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.DELETE,
+      entityType: 'Admin',
+      entityId: adminId,
+      details: deletedAdminSnapshot
+    });
 
     return res.status(200).json({
       success: true,

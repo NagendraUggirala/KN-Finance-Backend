@@ -14,8 +14,12 @@ import {
 import { syncRowToFinanceRecord, handleRowDeletionSync } from './financeSyncService.js';
 import { isValidObjectId } from '../utils/financeValidators.js';
 
+const getUserId = (user) => user?.employeeId || user?.username || user?.userId || 'staff';
+const getUserRole = (user) => user?.role || (user?.username === process.env.SUPERADMIN_USERNAME ? 'superadmin' : 'admin');
+
 /**
  * Transaction helper that uses MongoDB replica-set transactions when available,
+
  * and gracefully falls back to non-transactional execution for standalone local MongoDB instances.
  */
 export const runInTransaction = async (workFn) => {
@@ -173,6 +177,8 @@ export const getActiveLedgerData = async () => {
       totalPaid,
       remainingBalance,
       payments: rowPayments,
+      createdBy: row.createdBy,
+      updatedBy: row.updatedBy,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     };
@@ -250,7 +256,8 @@ export const addInstallmentColumn = async ({ ledgerBookId, user }) => {
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: 'ADD_COLUMN',
           entityType: 'LedgerDateColumn',
           entityId: newColumn._id.toString(),
@@ -261,6 +268,7 @@ export const addInstallmentColumn = async ({ ledgerBookId, user }) => {
           }
         }
       ],
+
       { session }
     );
 
@@ -349,7 +357,8 @@ export const deleteInstallmentColumn = async ({ ledgerBookId, columnIndex, user 
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: 'DELETE_COLUMN',
           entityType: 'LedgerDateColumn',
           entityId: targetColumn._id.toString(),
@@ -359,6 +368,7 @@ export const deleteInstallmentColumn = async ({ ledgerBookId, columnIndex, user 
           }
         }
       ],
+
       { session }
     );
 
@@ -405,8 +415,8 @@ export const createBorrowerRow = async ({ data, user }) => {
       initialRemaining,
       interestRate: Number(data.interestRate) || 5,
       isClosed: Boolean(data.isClosed),
-      createdBy: user?.username || 'admin',
-      updatedBy: user?.username || 'admin'
+      createdBy: getUserId(user),
+      updatedBy: getUserId(user)
     });
 
     await newRow.save({ session });
@@ -424,8 +434,10 @@ export const createBorrowerRow = async ({ data, user }) => {
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: 'CREATE_ROW',
+
           entityType: 'LedgerBorrowerRow',
           entityId: newRow._id.toString(),
           details: {
@@ -457,7 +469,11 @@ export const createBorrowerRow = async ({ data, user }) => {
       isClosed: newRow.isClosed,
       totalPaid: 0,
       remainingBalance: initialRemaining,
-      payments: {}
+      payments: {},
+      createdBy: newRow.createdBy,
+      updatedBy: newRow.updatedBy,
+      createdAt: newRow.createdAt,
+      updatedAt: newRow.updatedAt
     };
   });
 };
@@ -517,7 +533,7 @@ export const updateBorrowerRow = async ({ rowId, data, user }) => {
       row.initialRemaining = calculateInterestIncrement5Percent(row.initialRemaining);
     }
 
-    row.updatedBy = user?.username || 'admin';
+    row.updatedBy = getUserId(user);
     await row.save({ session });
 
     // Fetch existing payments to calculate totalPaid and remainingBalance
@@ -546,8 +562,10 @@ export const updateBorrowerRow = async ({ rowId, data, user }) => {
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: 'UPDATE_ROW',
+
           entityType: 'LedgerBorrowerRow',
           entityId: row._id.toString(),
           details: {
@@ -578,7 +596,11 @@ export const updateBorrowerRow = async ({ rowId, data, user }) => {
       isClosed: row.isClosed,
       totalPaid,
       remainingBalance,
-      payments: paymentsMap
+      payments: paymentsMap,
+      createdBy: row.createdBy,
+      updatedBy: row.updatedBy,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
     };
   });
 };
@@ -615,7 +637,7 @@ export const updateBorrowerRowStatus = async ({ rowId, isClosed, user }) => {
     }
 
     row.isClosed = Boolean(isClosed);
-    row.updatedBy = user?.username || 'admin';
+    row.updatedBy = getUserId(user);
     await row.save({ session });
 
     // Sync with FinanceRecord
@@ -631,8 +653,10 @@ export const updateBorrowerRowStatus = async ({ rowId, isClosed, user }) => {
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: isClosed ? 'CLOSE_ACCOUNT' : 'REOPEN_ACCOUNT',
+
           entityType: 'LedgerBorrowerRow',
           entityId: row._id.toString(),
           details: {
@@ -708,7 +732,8 @@ export const deleteBorrowerRow = async ({ rowId, user }) => {
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: 'DELETE_ROW',
           entityType: 'LedgerBorrowerRow',
           entityId: rowId,
@@ -809,7 +834,7 @@ export const batchSaveLedger = async ({ ledgerBookId, version, dateColumns, rows
           rowDoc.initialRemaining = initialRemaining;
           rowDoc.interestRate = Number(rowData.interestRate) || rowDoc.interestRate || 5;
           rowDoc.isClosed = Boolean(rowData.isClosed);
-          rowDoc.updatedBy = user?.username || 'admin';
+          rowDoc.updatedBy = getUserId(user);
           await rowDoc.save({ session });
         } else {
           // Create new row
@@ -824,8 +849,8 @@ export const batchSaveLedger = async ({ ledgerBookId, version, dateColumns, rows
             initialRemaining,
             interestRate: Number(rowData.interestRate) || 5,
             isClosed: Boolean(rowData.isClosed),
-            createdBy: user?.username || 'admin',
-            updatedBy: user?.username || 'admin'
+            createdBy: getUserId(user),
+            updatedBy: getUserId(user)
           });
           await rowDoc.save({ session });
         }
@@ -874,7 +899,7 @@ export const batchSaveLedger = async ({ ledgerBookId, version, dateColumns, rows
                   paymentDate: paymentDate || addSevenDaysToDateStr(null),
                   amount,
                   paymentType,
-                  collectedBy: user?.username || 'admin'
+                  collectedBy: getUserId(user)
                 },
                 { upsert: true, returnDocument: 'after', session }
               );
@@ -917,7 +942,8 @@ export const batchSaveLedger = async ({ ledgerBookId, version, dateColumns, rows
     await AuditLog.create(
       [
         {
-          userId: user?.username || user?.userId || 'admin',
+          userId: getUserId(user),
+          userRole: getUserRole(user),
           action: 'BATCH_SAVE',
           entityType: 'FinanceBook',
           entityId: ledgerBook._id.toString(),

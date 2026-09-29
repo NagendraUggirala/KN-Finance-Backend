@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.js';
 import PasswordReset from '../models/PasswordReset.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
+import { createAuditLog, AUDIT_ACTIONS } from '../services/auditLogService.js';
 
 /**
  * Super Admin Login
@@ -27,6 +28,16 @@ export const superAdminLogin = async (req, res, next) => {
 
     // Compare credentials with environment variables
     if (username !== envUsername || password !== envPassword) {
+      await createAuditLog({
+        req,
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entityType: 'Auth',
+        entityId: username || 'superadmin',
+        userId: username || 'superadmin',
+        userRole: 'superadmin',
+        details: { reason: 'Invalid Super Admin credentials', attemptedUsername: username }
+      });
+
       return res.status(401).json({
         success: false,
         message: 'Invalid Super Admin credentials.'
@@ -41,6 +52,17 @@ export const superAdminLogin = async (req, res, next) => {
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+    });
+
+    // Log successful Super Admin login
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.LOGIN,
+      entityType: 'Auth',
+      entityId: 'superadmin',
+      userId: process.env.SUPERADMIN_USERNAME || 'superadmin',
+      userRole: 'superadmin',
+      details: { username: process.env.SUPERADMIN_USERNAME }
     });
 
     // Return successful response without exposing password
@@ -80,6 +102,15 @@ export const adminLogin = async (req, res, next) => {
     const admin = await Admin.findOne({ email: normalizedEmail });
 
     if (!admin) {
+      await createAuditLog({
+        req,
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entityType: 'Admin',
+        userId: normalizedEmail,
+        userRole: 'admin',
+        details: { email: normalizedEmail, reason: 'Admin account not found' }
+      });
+
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -88,6 +119,16 @@ export const adminLogin = async (req, res, next) => {
 
     // Verify account status
     if (admin.status !== 'active') {
+      await createAuditLog({
+        req,
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entityType: 'Admin',
+        entityId: admin._id.toString(),
+        userId: admin._id.toString(),
+        userRole: 'admin',
+        details: { email: normalizedEmail, reason: 'Admin account inactive' }
+      });
+
       return res.status(403).json({
         success: false,
         message: 'Admin account is inactive. Please contact Super Admin.'
@@ -97,6 +138,16 @@ export const adminLogin = async (req, res, next) => {
     // Compare password with bcrypt hash
     const isMatch = await admin.comparePassword(password);
     if (!isMatch) {
+      await createAuditLog({
+        req,
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        entityType: 'Admin',
+        entityId: admin._id.toString(),
+        userId: admin._id.toString(),
+        userRole: 'admin',
+        details: { email: normalizedEmail, reason: 'Incorrect password' }
+      });
+
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -113,6 +164,17 @@ export const adminLogin = async (req, res, next) => {
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+    });
+
+    // Log successful Admin login
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.LOGIN,
+      entityType: 'Admin',
+      entityId: admin._id.toString(),
+      userId: admin._id.toString(),
+      userRole: 'admin',
+      details: { username: admin.username, email: admin.email }
     });
 
     return res.status(200).json({
@@ -465,6 +527,20 @@ export const resetPassword = async (req, res, next) => {
 
     // Invalidate/delete the password reset records for this admin
     await PasswordReset.deleteMany({ adminId: admin._id });
+
+    // Log password reset audit (never logs passwords or tokens)
+    await createAuditLog({
+      req,
+      action: AUDIT_ACTIONS.PASSWORD_RESET,
+      entityType: 'Admin',
+      entityId: admin._id.toString(),
+      userId: admin._id.toString(),
+      userRole: 'admin',
+      details: {
+        username: admin.username,
+        email: admin.email
+      }
+    });
 
     return res.status(200).json({
       success: true,

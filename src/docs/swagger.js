@@ -567,6 +567,55 @@ export const swaggerDocument = {
           paymentDate: { type: 'string', example: '2026-09-28' },
           paymentType: { type: 'string', enum: ['Cash', 'UPI', 'Card'], example: 'Cash' }
         }
+      },
+      AuditLog: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string', example: '66f4c222b123c456d789e001' },
+          userId: { type: 'string', example: 'admin001' },
+          userRole: { type: 'string', example: 'admin' },
+          action: { type: 'string', example: 'UPDATE' },
+          entityType: { type: 'string', example: 'Employee' },
+          entityId: { type: 'string', example: '66f3a000a123b456c789d001' },
+          details: {
+            type: 'object',
+            example: {
+              changedFields: ['phone', 'village'],
+              before: { phone: '9876543210', village: 'Ravulapalem' },
+              after: { phone: '9123456780', village: 'Narsapuram' }
+            }
+          },
+          ipAddress: { type: 'string', example: '127.0.0.1' },
+          userAgent: { type: 'string', example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          createdAt: { type: 'string', format: 'date-time', example: '2026-09-29T10:30:00.000Z' }
+        }
+      },
+      AuditLogPagination: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', example: 1 },
+          limit: { type: 'integer', example: 25 },
+          totalRecords: { type: 'integer', example: 71 },
+          totalPages: { type: 'integer', example: 3 }
+        }
+      },
+      AuditLogListResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          data: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/AuditLog' }
+          },
+          pagination: { $ref: '#/components/schemas/AuditLogPagination' }
+        }
+      },
+      AuditLogDetailResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          data: { $ref: '#/components/schemas/AuditLog' }
+        }
       }
     }
   },
@@ -594,6 +643,10 @@ export const swaggerDocument = {
     {
       name: 'Employee Portal',
       description: 'Employee Portal - Authentication, field borrower routes, and collections'
+    },
+    {
+      name: 'Audit Logs',
+      description: 'Centralized immutable audit trail and activity logging endpoints (Admin / Super Admin)'
     }
   ],
 
@@ -1351,7 +1404,7 @@ export const swaggerDocument = {
             }
           },
           403: {
-            description: 'Forbidden - Admin only',
+            description: 'Forbidden - Authorized Staff or Admin only',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2052,6 +2105,195 @@ export const swaggerDocument = {
           },
           400: { description: 'Invalid amount or closed borrower account' },
           404: { description: 'Borrower record not found' }
+        }
+      }
+    },
+    '/api/audit-logs': {
+      get: {
+        tags: ['Audit Logs'],
+        summary: 'Query audit logs with pagination, multi-field filtering, and safe search',
+        description: 'Retrieves audit records chronologically (newest first). Supported by Admins and Super Admins. Returns pagination metadata and masked sensitive credentials.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            description: 'Page number (default 1)',
+            required: false,
+            schema: { type: 'integer', default: 1 }
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            description: 'Items per page (default 25, max 100)',
+            required: false,
+            schema: { type: 'integer', default: 25, maximum: 100 }
+          },
+          {
+            name: 'userId',
+            in: 'query',
+            description: 'Filter logs by actor userId (username, employeeId, or ObjectId)',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'userRole',
+            in: 'query',
+            description: 'Filter logs by actor userRole (superadmin, admin, employee)',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'action',
+            in: 'query',
+            description: 'Filter by action (CREATE, UPDATE, DELETE, LOGIN, LOGIN_FAILED, STATUS_CHANGE, PASSWORD_RESET, ADD_COLUMN, REMOVE_COLUMN, etc.)',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'entityType',
+            in: 'query',
+            description: 'Filter by affected entity type (Admin, Employee, FinanceRecord, LedgerBorrowerRow, LedgerDateColumn, FinanceBook, Auth)',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'entityId',
+            in: 'query',
+            description: 'Filter by affected entity identifier or ObjectId',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'startDate',
+            in: 'query',
+            description: 'Start of date range (ISO date: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ)',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'endDate',
+            in: 'query',
+            description: 'End of date range (ISO date: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ)',
+            required: false,
+            schema: { type: 'string' }
+          },
+          {
+            name: 'search',
+            in: 'query',
+            description: 'Free-text search across userId, action, entityType, entityId, and ipAddress',
+            required: false,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Paginated audit logs successfully retrieved',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AuditLogListResponse' }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid query parameters or date format',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Unauthorized - Missing or invalid Bearer token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Forbidden - Insufficient permissions (Requires Admin or Super Admin role)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          500: {
+            description: 'Internal server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/audit-logs/{id}': {
+      get: {
+        tags: ['Audit Logs'],
+        summary: 'Get audit log details by ID',
+        description: 'Returns the complete audit log document including before/after change diffs and network metadata.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'MongoDB ObjectId of the audit log record',
+            schema: { type: 'string', example: '66f4c222b123c456d789e001' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Audit log record details',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AuditLogDetailResponse' }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid Audit Log ID format',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Unauthorized - Missing or invalid Bearer token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Forbidden - Requires Admin or Super Admin role',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          404: {
+            description: 'Audit log record not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          500: {
+            description: 'Internal server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
         }
       }
     }
