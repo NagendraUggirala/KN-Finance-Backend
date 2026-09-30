@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import AuditLog from '../models/AuditLog.js';
+import SystemSecurityLog from '../models/SystemSecurityLog.js';
 import { sanitizeAuditDetails, getClientIp, getUserAgent } from '../utils/auditLogSanitizer.js';
 
 /**
@@ -282,4 +283,51 @@ export const getAuditLogById = async (id) => {
   return {
     data: log
   };
+};
+
+/**
+ * Permanently clears all audit logs from the auditlogs collection.
+ *
+ * Safety & Security Rules:
+ * 1. Validates exact confirmation token: 'CLEAR_ALL_AUDIT_LOGS'.
+ * 2. Employs AuditLog.deleteMany({}) — strictly preserves auditlogs collection, schema, and indexes.
+ * 3. Never deletes documents from other collections (admins, employees, finance records, ledgers, etc.).
+ * 4. Records the destructive operation in the dedicated 'systemsecuritylogs' collection.
+ *
+ * @param {Object} options
+ * @param {string} options.confirmation - Exact string 'CLEAR_ALL_AUDIT_LOGS'
+ * @param {import('express').Request} options.req - Authenticated Super Admin request
+ * @returns {Promise<{ deletedCount: number }>}
+ */
+export const clearAllAuditLogs = async ({ confirmation, req } = {}) => {
+  if (confirmation !== 'CLEAR_ALL_AUDIT_LOGS') {
+    const error = new Error('Confirmation required to clear audit logs');
+    error.status = 400;
+    throw error;
+  }
+
+  // Perform controlled deletion on auditlogs documents ONLY
+  const result = await AuditLog.deleteMany({});
+  const deletedCount = result.deletedCount || 0;
+
+  // Record this critical event in the dedicated systemsecuritylogs collection
+  try {
+    const userId = req?.user?.username || req?.user?.userId || req?.user?.id || 'superadmin';
+    const userRole = req?.user?.role || 'superadmin';
+    const ipAddress = getClientIp(req);
+    const userAgent = getUserAgent(req);
+
+    await SystemSecurityLog.create({
+      userId: String(userId),
+      userRole: String(userRole),
+      action: 'CLEAR_AUDIT_LOGS',
+      deletedCount,
+      ipAddress,
+      userAgent
+    });
+  } catch (secErr) {
+    console.error('[SecurityLog Notice] Failed to log clear event to systemsecuritylogs:', secErr.message);
+  }
+
+  return { deletedCount };
 };

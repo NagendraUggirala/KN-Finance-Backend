@@ -2228,6 +2228,79 @@ export const swaggerDocument = {
             }
           }
         }
+      },
+      delete: {
+        tags: ['Audit Logs'],
+        summary: 'Permanently clear all audit logs (Super Admin only)',
+        description: 'Permanently clears all audit logs from the auditlogs collection while preserving collection structure and indexes. Requires Super Admin authentication and exact confirmation token "CLEAR_ALL_AUDIT_LOGS". Action is immutably recorded in systemsecuritylogs. Normal Admins receive 403 Forbidden.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['confirmation'],
+                properties: {
+                  confirmation: {
+                    type: 'string',
+                    example: 'CLEAR_ALL_AUDIT_LOGS',
+                    description: 'Must be exactly "CLEAR_ALL_AUDIT_LOGS"'
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Audit logs cleared successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Audit logs cleared successfully' },
+                    deletedCount: { type: 'integer', example: 71 }
+                  }
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Confirmation required or invalid confirmation value',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Unauthorized - Missing or invalid Bearer token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Forbidden - Access denied. Super Admin only.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          500: {
+            description: 'Internal server error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
       }
     },
     '/api/audit-logs/{id}': {

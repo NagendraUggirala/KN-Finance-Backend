@@ -1,4 +1,8 @@
-import { queryAuditLogs, getAuditLogById as fetchAuditLogById } from '../services/auditLogService.js';
+import {
+  queryAuditLogs,
+  getAuditLogById as fetchAuditLogById,
+  clearAllAuditLogs
+} from '../services/auditLogService.js';
 
 /**
  * Get paginated list of audit logs with search and filtering
@@ -73,6 +77,40 @@ export const getAuditLogById = async (req, res, next) => {
       data: result.data
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Permanently clear all audit logs from auditlogs collection
+ * Route: DELETE /api/audit-logs or DELETE /api/v1/audit-logs
+ * Access: Super Admin only
+ */
+export const clearAuditLogs = async (req, res, next) => {
+  try {
+    const { confirmation } = req.body || {};
+
+    if (confirmation !== 'CLEAR_ALL_AUDIT_LOGS') {
+      return res.status(400).json({
+        success: false,
+        message: 'Confirmation required to clear audit logs'
+      });
+    }
+
+    const result = await clearAllAuditLogs({ confirmation, req });
+
+    return res.status(200).json({
+      success: true,
+      message: result.deletedCount > 0 ? 'Audit logs cleared successfully' : 'No audit logs found',
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
     next(error);
   }
 };

@@ -1,6 +1,10 @@
 import express from 'express';
-import { getAuditLogs, getAuditLogById } from '../controllers/auditLogController.js';
-import { authenticateToken, requireAdminOrSuperAdmin } from '../middleware/authMiddleware.js';
+import { getAuditLogs, getAuditLogById, clearAuditLogs } from '../controllers/auditLogController.js';
+import {
+  authenticateToken,
+  requireAdminOrSuperAdmin,
+  requireSuperAdmin
+} from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -20,5 +24,12 @@ router.get('/', getAuditLogs);
  * @access  Private (Admin, Super Admin)
  */
 router.get('/:id', getAuditLogById);
+
+/**
+ * @route   DELETE /api/audit-logs
+ * @desc    Permanently clear all audit logs (Requires Super Admin authorization and confirmation)
+ * @access  Private (Super Admin only)
+ */
+router.delete('/', requireSuperAdmin, clearAuditLogs);
 
 export default router;
