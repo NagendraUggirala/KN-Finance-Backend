@@ -9,6 +9,7 @@ import financeBookRoutes from './routes/financeBookRoutes.js';
 import adminEmployeeRoutes from './routes/adminEmployeeRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import auditLogRoutes from './routes/auditLogRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerDocument } from './docs/swagger.js';
 
@@ -56,6 +57,8 @@ app.use('/api/v1/employee', employeeRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/v1/audit-logs', auditLogRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 
 

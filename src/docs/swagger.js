@@ -616,6 +616,99 @@ export const swaggerDocument = {
           success: { type: 'boolean', example: true },
           data: { $ref: '#/components/schemas/AuditLog' }
         }
+      },
+      NotificationItem: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string', example: '66f5a111b123c456d789e001' },
+          title: { type: 'string', example: 'Scheduled Maintenance Notice' },
+          message: { type: 'string', example: 'System maintenance scheduled tonight at 11:00 PM IST.' },
+          severity: { type: 'string', enum: ['Info', 'Success', 'Warning', 'Critical', 'Expiry'], example: 'Info' },
+          recipientType: { type: 'string', enum: ['all', 'single', 'status', 'expiry'], example: 'all' },
+          recipientTarget: { type: 'string', example: 'All Branch Admins' },
+          targetAdminId: { type: 'string', nullable: true, example: null },
+          targetAdminEmail: { type: 'string', nullable: true, example: null },
+          targetAdminName: { type: 'string', nullable: true, example: null },
+          targetStatus: { type: 'string', nullable: true, example: null },
+          expiryDate: { type: 'string', nullable: true, example: null },
+          sendEmail: { type: 'boolean', example: true },
+          isEmailSent: { type: 'boolean', example: true },
+          actionLink: { type: 'string', nullable: true, example: 'https://knfinance.com/dashboard' },
+          senderName: { type: 'string', example: 'Super Admin' },
+          isRead: { type: 'boolean', example: false },
+          readAt: { type: 'string', format: 'date-time', nullable: true, example: null },
+          createdAt: { type: 'string', format: 'date-time', example: '2026-09-30T10:00:00.000Z' }
+        }
+      },
+      CreateNotificationRequest: {
+        type: 'object',
+        required: ['title', 'message', 'recipientType'],
+        properties: {
+          title: { type: 'string', example: 'Server Infrastructure Upgrade' },
+          message: { type: 'string', example: 'Please ensure all pending offline records are synced.' },
+          severity: { type: 'string', enum: ['Info', 'Success', 'Warning', 'Critical', 'Expiry'], default: 'Info', example: 'Warning' },
+          recipientType: { type: 'string', enum: ['all', 'single', 'status', 'expiry'], example: 'all' },
+          targetAdminId: { type: 'string', description: 'Required if recipientType is single', example: '66f3a987b654c321d012e999' },
+          targetStatus: { type: 'string', enum: ['active', 'inactive'], description: 'Required if recipientType is status', example: 'active' },
+          expiryDate: { type: 'string', description: 'License expiration date if recipientType is expiry', example: '2026-10-15' },
+          sendEmail: { type: 'boolean', default: false, example: true },
+          actionLink: { type: 'string', example: 'https://portal.knfinance.com' },
+          senderName: { type: 'string', default: 'Super Admin', example: 'Super Admin' }
+        }
+      },
+      NotificationListResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          data: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/NotificationItem' }
+          },
+          pagination: {
+            type: 'object',
+            properties: {
+              total: { type: 'integer', example: 10 },
+              page: { type: 'integer', example: 1 },
+              limit: { type: 'integer', example: 20 },
+              totalPages: { type: 'integer', example: 1 }
+            }
+          },
+          metrics: {
+            type: 'object',
+            properties: {
+              totalDispatched: { type: 'integer', example: 10 },
+              totalEmailsSent: { type: 'integer', example: 8 }
+            }
+          }
+        }
+      },
+      AdminInboxResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          count: { type: 'integer', example: 5 },
+          unreadCount: { type: 'integer', example: 2 },
+          pagination: {
+            type: 'object',
+            properties: {
+              total: { type: 'integer', example: 5 },
+              page: { type: 'integer', example: 1 },
+              limit: { type: 'integer', example: 20 },
+              totalPages: { type: 'integer', example: 1 }
+            }
+          },
+          data: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/NotificationItem' }
+          }
+        }
+      },
+      UnreadCountResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          unreadCount: { type: 'integer', example: 3 }
+        }
       }
     }
   },
@@ -623,6 +716,10 @@ export const swaggerDocument = {
     {
       name: 'General',
       description: 'System health and info'
+    },
+    {
+      name: 'Notifications',
+      description: 'Super Admin notification dispatch, email alerts, and Branch Admin inbox management'
     },
     {
       name: 'Authentication',
@@ -2364,6 +2461,379 @@ export const swaggerDocument = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications': {
+      post: {
+        tags: ['Notifications'],
+        summary: 'Dispatch notification and send email alert',
+        description: 'Super Admin dispatches an in-app notification and optionally delivers formatted HTML email alerts to targeted Branch Administrators (All, Single, Status-based, or License Expiration).',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateNotificationRequest' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Notification dispatched successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Notification dispatched successfully' },
+                    data: { $ref: '#/components/schemas/NotificationItem' },
+                    dispatchSummary: {
+                      type: 'object',
+                      properties: {
+                        recipientsCount: { type: 'integer', example: 5 },
+                        emailSent: { type: 'boolean', example: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          400: {
+            description: 'Invalid input or validation error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          401: {
+            description: 'Unauthorized - Missing or invalid Bearer token',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          403: {
+            description: 'Forbidden - Requires Super Admin role',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      },
+      get: {
+        tags: ['Notifications'],
+        summary: 'Get all dispatched notifications (Super Admin) or inbox (Branch Admin)',
+        description: 'Returns notifications history for Super Admin, or the inbox for an authenticated Branch Admin.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            description: 'Page number (default: 1)',
+            schema: { type: 'integer', default: 1 }
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            description: 'Items per page (default: 20)',
+            schema: { type: 'integer', default: 20 }
+          },
+          {
+            name: 'severity',
+            in: 'query',
+            description: 'Filter by severity (Info, Success, Warning, Critical, Expiry)',
+            schema: { type: 'string', enum: ['all', 'Info', 'Success', 'Warning', 'Critical', 'Expiry'] }
+          },
+          {
+            name: 'recipientType',
+            in: 'query',
+            description: 'Filter by recipient type (all, single, status, expiry)',
+            schema: { type: 'string', enum: ['all', 'single', 'status', 'expiry'] }
+          },
+          {
+            name: 'search',
+            in: 'query',
+            description: 'Keyword search across title and message',
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'List of notifications',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotificationListResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/history': {
+      get: {
+        tags: ['Notifications'],
+        summary: 'Get full dispatched notifications history (Super Admin)',
+        description: 'Super Admin retrieves complete history of dispatched alerts, recipients, email statuses, and read counts.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', default: 1 }
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', default: 20 }
+          },
+          {
+            name: 'severity',
+            in: 'query',
+            schema: { type: 'string' }
+          },
+          {
+            name: 'recipientType',
+            in: 'query',
+            schema: { type: 'string' }
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Dispatched notifications history',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotificationListResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/inbox': {
+      get: {
+        tags: ['Notifications'],
+        summary: 'Get notifications inbox for Branch Admin',
+        description: 'Retrieves all notifications targeted to this branch administrator with calculated isRead flag and unread counts.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', default: 1 }
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', default: 20 }
+          },
+          {
+            name: 'severity',
+            in: 'query',
+            schema: { type: 'string' }
+          },
+          {
+            name: 'unreadOnly',
+            in: 'query',
+            description: 'Filter only unread notifications if true',
+            schema: { type: 'boolean', default: false }
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Admin inbox list',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminInboxResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/unread-count': {
+      get: {
+        tags: ['Notifications'],
+        summary: 'Get unread notification count badge for Admin',
+        description: 'Returns the number of unread notifications for display in header and sidebar badges.',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Unread notification count',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UnreadCountResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/{id}/read': {
+      patch: {
+        tags: ['Notifications'],
+        summary: 'Mark a notification as read',
+        description: 'Records read receipt for this notification by the authenticated branch admin.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Notification MongoDB ObjectId',
+            schema: { type: 'string', example: '66f5a111b123c456d789e001' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Notification marked as read',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Notification marked as read' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/read-all': {
+      patch: {
+        tags: ['Notifications'],
+        summary: 'Mark all notifications as read',
+        description: 'Marks all inbox notifications as read for the authenticated branch admin.',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'All notifications marked as read',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'All notifications marked as read' },
+                    modifiedCount: { type: 'integer', example: 4 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/{id}': {
+      get: {
+        tags: ['Notifications'],
+        summary: 'Get notification by ID',
+        description: 'Retrieves single notification details with populated admin and read receipts.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Notification details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/NotificationItem' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      delete: {
+        tags: ['Notifications'],
+        summary: 'Delete notification (Super Admin)',
+        description: 'Super Admin deletes a notification and logs the action in the Audit Log.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Notification deleted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Notification deleted successfully' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/notifications/{id}/resend': {
+      post: {
+        tags: ['Notifications'],
+        summary: 'Resend notification email alert (Super Admin)',
+        description: 'Super Admin retriggers the email dispatch for an existing notification.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Notification email resent successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Notification email resent successfully' }
+                  }
+                }
               }
             }
           }

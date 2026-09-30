@@ -96,5 +96,12 @@ export const requireStaffOrAdmin = (req, res, next) => {
   }
   next();
 };
+/**
+ * Combined authentication & Super Admin verification
+ */
+export const verifySuperAdmin = [authenticateToken, requireSuperAdmin];
 
-
+/**
+ * Combined authentication & Admin/SuperAdmin verification
+ */
+export const verifyAdmin = [authenticateToken, requireAdminOrSuperAdmin];
