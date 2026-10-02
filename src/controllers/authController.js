@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.js';
+import Employee from '../models/Employee.js';
 import PasswordReset from '../models/PasswordReset.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
 import { createAuditLog, AUDIT_ACTIONS } from '../services/auditLogService.js';
@@ -213,11 +214,13 @@ export const forgotPassword = async (req, res, next) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Find the Admin using the registered email
+    // Check in Admin / Employee model
     const admin = await Admin.findOne({ email: normalizedEmail });
+    const employee = !admin ? await Employee.findOne({ email: normalizedEmail, isArchived: { $ne: true } }) : null;
+    const user = admin || employee;
 
-    // Anti-enumeration: Return same success message even if admin doesn't exist
-    if (!admin) {
+    // Anti-enumeration: Return same success message even if user doesn't exist
+    if (!user) {
       return res.status(200).json({
         success: true,
         message: 'If this email is registered with KN Finance, a verification OTP has been sent.'
@@ -225,7 +228,7 @@ export const forgotPassword = async (req, res, next) => {
     }
 
     // Check 60-second cooldown on existing active reset request
-    const existingReset = await PasswordReset.findOne({ adminId: admin._id, verified: false }).sort({ createdAt: -1 });
+    const existingReset = await PasswordReset.findOne({ adminId: user._id, verified: false }).sort({ createdAt: -1 });
     if (existingReset && existingReset.lastRequestedAt) {
       const elapsedMs = Date.now() - new Date(existingReset.lastRequestedAt).getTime();
       const cooldownMs = 60 * 1000;
@@ -248,12 +251,13 @@ export const forgotPassword = async (req, res, next) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     // Replace/invalidate previous pending requests
-    await PasswordReset.deleteMany({ adminId: admin._id });
+    await PasswordReset.deleteMany({ adminId: user._id });
 
     // Store in PasswordReset collection
     await PasswordReset.create({
-      adminId: admin._id,
-      email: admin.email,
+      adminId: user._id,
+      userModel: admin ? 'Admin' : 'Employee',
+      email: user.email,
       otpHash,
       expiresAt,
       attempts: 0,
@@ -261,10 +265,12 @@ export const forgotPassword = async (req, res, next) => {
       lastRequestedAt: new Date()
     });
 
-    // Send OTP via Nodemailer
-    await sendPasswordResetEmail(admin.email, otp, 10);
+    // ⚡ DISPATCH EMAIL ASYNCHRONOUSLY IN BACKGROUND (Do NOT 'await' here!)
+    sendPasswordResetEmail(user.email, otp, 10)
+      .then(info => console.log(`[Email Sent]: OTP dispatched to ${user.email} (${info?.messageId || 'OK'})`))
+      .catch(mailErr => console.error(`[Email Failed]: Could not send OTP to ${user.email}:`, mailErr?.message || mailErr));
 
-    // Response: Never return plain OTP in production
+    // Return instant HTTP 200 response (Anti-enumeration compliant)
     const responsePayload = {
       success: true,
       message: 'If this email is registered with KN Finance, a verification OTP has been sent.'
@@ -297,9 +303,11 @@ export const resendOtp = async (req, res, next) => {
 
     const normalizedEmail = email.trim().toLowerCase();
     const admin = await Admin.findOne({ email: normalizedEmail });
+    const employee = !admin ? await Employee.findOne({ email: normalizedEmail, isArchived: { $ne: true } }) : null;
+    const user = admin || employee;
 
     // Anti-enumeration
-    if (!admin) {
+    if (!user) {
       return res.status(200).json({
         success: true,
         message: 'If this email is registered with KN Finance, a new OTP has been sent.'
@@ -307,7 +315,7 @@ export const resendOtp = async (req, res, next) => {
     }
 
     // Check 60-second cooldown
-    const existingReset = await PasswordReset.findOne({ adminId: admin._id, verified: false }).sort({ createdAt: -1 });
+    const existingReset = await PasswordReset.findOne({ adminId: user._id, verified: false }).sort({ createdAt: -1 });
     if (existingReset && existingReset.lastRequestedAt) {
       const elapsedMs = Date.now() - new Date(existingReset.lastRequestedAt).getTime();
       const cooldownMs = 60 * 1000;
@@ -325,11 +333,12 @@ export const resendOtp = async (req, res, next) => {
     const otpHash = await bcrypt.hash(otp, 10);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await PasswordReset.deleteMany({ adminId: admin._id });
+    await PasswordReset.deleteMany({ adminId: user._id });
 
     await PasswordReset.create({
-      adminId: admin._id,
-      email: admin.email,
+      adminId: user._id,
+      userModel: admin ? 'Admin' : 'Employee',
+      email: user.email,
       otpHash,
       expiresAt,
       attempts: 0,
@@ -337,7 +346,10 @@ export const resendOtp = async (req, res, next) => {
       lastRequestedAt: new Date()
     });
 
-    await sendPasswordResetEmail(admin.email, otp, 10);
+    // ⚡ DISPATCH EMAIL ASYNCHRONOUSLY IN BACKGROUND (Do NOT 'await' here!)
+    sendPasswordResetEmail(user.email, otp, 10)
+      .then(info => console.log(`[Email Sent]: Resend OTP dispatched to ${user.email} (${info?.messageId || 'OK'})`))
+      .catch(mailErr => console.error(`[Email Failed]: Could not resend OTP to ${user.email}:`, mailErr?.message || mailErr));
 
     const responsePayload = {
       success: true,
@@ -512,33 +524,51 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Find the Admin
-    const admin = await Admin.findById(resetRecord.adminId);
-    if (!admin) {
+    // Find the User (Admin or Employee)
+    let user = null;
+    let userRole = 'admin';
+    let entityType = 'Admin';
+
+    if (resetRecord.userModel === 'Employee') {
+      user = await Employee.findById(resetRecord.adminId);
+      userRole = 'employee';
+      entityType = 'Employee';
+    } else {
+      user = await Admin.findById(resetRecord.adminId);
+      if (!user) {
+        user = await Employee.findById(resetRecord.adminId);
+        if (user) {
+          userRole = 'employee';
+          entityType = 'Employee';
+        }
+      }
+    }
+
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Admin account not found.'
+        message: 'Account not found.'
       });
     }
 
-    // Update password (pre-save hook in Admin.js hashes it using bcrypt automatically)
-    admin.password = newPassword;
-    await admin.save();
+    // Update password (pre-save hook hashes it using bcrypt automatically)
+    user.password = newPassword;
+    await user.save();
 
-    // Invalidate/delete the password reset records for this admin
-    await PasswordReset.deleteMany({ adminId: admin._id });
+    // Invalidate/delete the password reset records for this user
+    await PasswordReset.deleteMany({ adminId: user._id });
 
     // Log password reset audit (never logs passwords or tokens)
     await createAuditLog({
       req,
       action: AUDIT_ACTIONS.PASSWORD_RESET,
-      entityType: 'Admin',
-      entityId: admin._id.toString(),
-      userId: admin._id.toString(),
-      userRole: 'admin',
+      entityType,
+      entityId: user._id.toString(),
+      userId: user._id.toString(),
+      userRole,
       details: {
-        username: admin.username,
-        email: admin.email
+        username: user.username || user.employeeId || user.fullName,
+        email: user.email
       }
     });
 

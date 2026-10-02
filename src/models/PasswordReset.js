@@ -4,9 +4,14 @@ const passwordResetSchema = new mongoose.Schema(
   {
     adminId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Admin',
+      refPath: 'userModel',
       required: true,
       index: true
+    },
+    userModel: {
+      type: String,
+      enum: ['Admin', 'Employee'],
+      default: 'Admin'
     },
     email: {
       type: String,

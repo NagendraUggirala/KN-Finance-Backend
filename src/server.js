@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import dns from 'node:dns';
 import connectDB from '../config/db.js';
 import authRoutes from './routes/authRoutes.js';
@@ -12,8 +12,6 @@ import auditLogRoutes from './routes/auditLogRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerDocument } from './docs/swagger.js';
-
-dotenv.config();
 
 // Use Google DNS for MongoDB Atlas SRV lookup
 dns.setServers(['8.8.8.8', '1.1.1.1']);

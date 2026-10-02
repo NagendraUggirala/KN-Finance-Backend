@@ -1,28 +1,65 @@
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+let cachedTransporter = null;
 
 /**
- * Creates and returns a configured Nodemailer transporter
+ * Creates and returns a configured persistent Nodemailer transporter with connection pooling
  */
-const createTransporter = () => {
-  const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.EMAIL_PORT, 10) || 587;
+export const getTransporter = () => {
+  if (cachedTransporter) {
+    return cachedTransporter;
+  }
+
   const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASSWORD;
+  const pass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD; // Supports Google App Password (16 characters)
 
   if (!user || !pass) {
     return null;
   }
 
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
+  const host = process.env.EMAIL_HOST;
+  const port = parseInt(process.env.EMAIL_PORT, 10);
+  const isCustomHost = host && host !== 'smtp.gmail.com';
+
+  const transportConfig = {
     auth: {
       user,
       pass
+    },
+    pool: true,              // Use persistent connection pool
+    maxConnections: 3,       // Max concurrent connections
+    connectionTimeout: 8000, // Fail fast if Gmail throttles connection (8s)
+    socketTimeout: 10000     // 10s socket timeout
+  };
+
+  if (isCustomHost) {
+    transportConfig.host = host;
+    transportConfig.port = port || 587;
+    transportConfig.secure = transportConfig.port === 465;
+  } else {
+    // Standard Gmail configuration for cloud platforms (Render, etc.)
+    transportConfig.service = 'gmail';
+  }
+
+  cachedTransporter = nodemailer.createTransport(transportConfig);
+
+  // Verify transporter once on server start / module initialization
+  cachedTransporter.verify((err, success) => {
+    if (err) {
+      console.error('[SMTP Config Error]:', err.message || err);
+    } else {
+      console.log('[SMTP Config]: Email transporter ready.');
     }
   });
+
+  return cachedTransporter;
 };
+
+// Singleton transporter instance
+export const transporter = getTransporter();
 
 /**
  * Sends a branded KN Finance Password Reset OTP email
@@ -30,10 +67,10 @@ const createTransporter = () => {
  * @param {string} to - Recipient email address
  * @param {string} otp - 6-digit verification code
  * @param {number} expiryMinutes - Expiration time in minutes (default 10)
- * @returns {Promise<{ sent: boolean, messageId?: string }>}
+ * @returns {Promise<{ sent: boolean, messageId?: string, error?: string }>}
  */
 export const sendPasswordResetEmail = async (to, otp, expiryMinutes = 10) => {
-  const transporter = createTransporter();
+  const mailTransporter = getTransporter();
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -116,23 +153,24 @@ Never share this code with anyone. KN Finance representatives will never ask for
 If you did not request a password reset, please ignore this email.
   `;
 
-  if (!transporter) {
+  if (!mailTransporter) {
     console.log(`ℹ️ [EmailService] SMTP credentials not set. Simulated email dispatch to ${to}: OTP = ${otp}`);
     return { sent: false, simulated: true };
   }
 
   try {
-    const info = await transporter.sendMail({
-      from: `"KN Finance Security" <${process.env.EMAIL_USER}>`,
+    const info = await mailTransporter.sendMail({
+      from: `"KN Finance Support" <${process.env.EMAIL_USER}>`,
       to,
-      subject: `KN Finance Password Reset Code: ${otp}`,
+      subject: 'KN Finance - Password Reset Verification OTP',
       text: textContent,
       html: htmlContent
     });
 
+    console.log(`[Email Sent]: OTP dispatched to ${to} (${info.messageId})`);
     return { sent: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ [EmailService] Failed to send email via SMTP:', error.message);
+    console.error(`[Email Failed]: Could not send OTP to ${to}:`, error.message);
     // Don't crash the request; return sent: false so controller can handle appropriately
     return { sent: false, error: error.message };
   }
@@ -160,7 +198,7 @@ export const sendNotificationEmail = async ({
   senderName = 'Super Admin',
   expiryDate = null
 }) => {
-  const transporter = createTransporter();
+  const mailTransporter = getTransporter();
 
   // Normalize recipients
   const recipientsList = Array.isArray(to) ? to.filter(Boolean) : [to].filter(Boolean);
@@ -294,7 +332,7 @@ Date: ${new Date().toISOString()}
   `.trim();
 
   // If no SMTP configured, log simulated delivery
-  if (!transporter) {
+  if (!mailTransporter) {
     console.log(
       `ℹ️ [EmailService] SMTP credentials not set. Simulated notification email to [${recipientsList.join(', ')}] with title: "${title}"`
     );
@@ -305,7 +343,7 @@ Date: ${new Date().toISOString()}
     const toField = recipientsList.length === 1 ? recipientsList[0] : process.env.EMAIL_USER || 'admin@knfinance.com';
     const bccField = recipientsList.length > 1 ? recipientsList : undefined;
 
-    const info = await transporter.sendMail({
+    const info = await mailTransporter.sendMail({
       from: `"KN Finance Alert" <${process.env.EMAIL_USER}>`,
       to: toField,
       bcc: bccField,
