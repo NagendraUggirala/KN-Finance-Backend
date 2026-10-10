@@ -1,29 +1,29 @@
 import express from 'express';
 import {
+  unifiedLogin,
   superAdminLogin,
-
   adminLogin,
   forgotPassword,
   resendOtp,
   verifyOtp,
   resetPassword
 } from '../controllers/authController.js';
-import { login as employeeLogin } from '../controllers/employeeController.js';
 
 const router = express.Router();
 
-// Super Admin Login
-// POST /api/auth/superadmin/login
-router.post('/superadmin/login', superAdminLogin);
+// ==========================================
+// UNIFIED SINGLE LOGIN (Primary Endpoint)
+// POST /api/auth/login or POST /api/v1/auth/login
+// Supports: Super Admin, Admin, and Employee
+// ==========================================
+router.post('/login', unifiedLogin);
 
-// Admin Login
-// POST /api/auth/login and POST /api/auth/admin/login
-router.post('/login', adminLogin);
-router.post('/admin/login', adminLogin);
-
-// Employee Portal Login
-// POST /api/auth/employee/login or POST /api/v1/auth/employee/login
-router.post('/employee/login', employeeLogin);
+// ==========================================
+// BACKWARD-COMPATIBLE ROUTE ALIASES
+// ==========================================
+router.post('/admin/login', unifiedLogin);
+router.post('/superadmin/login', unifiedLogin);
+router.post('/employee/login', unifiedLogin);
 
 
 // Admin Password Reset Workflow

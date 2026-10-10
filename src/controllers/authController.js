@@ -8,73 +8,265 @@ import { sendPasswordResetEmail } from '../services/emailService.js';
 import { createAuditLog, AUDIT_ACTIONS } from '../services/auditLogService.js';
 
 /**
- * Super Admin Login
- * Route: POST /api/auth/superadmin/login
- * Authenticates using environment variables (process.env.SUPERADMIN_USERNAME & process.env.SUPERADMIN_PASSWORD)
+ * Unified Login
+ * Route: POST /api/auth/login or POST /api/v1/auth/login
+ * Authenticates Super Admin, Admin, and Employee from a single unified POST endpoint.
+ * Accepts: { email, password }
  */
-export const superAdminLogin = async (req, res, next) => {
+export const unifiedLogin = async (req, res, next) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
+    const rawLoginId = (email || req.body.identifier || req.body.username || req.body.employeeId || '').toString().trim();
 
     // Validate request body
-    if (!username || !password) {
+    if (!rawLoginId || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username and password are required'
+        message: 'Email and password are required'
       });
     }
 
-    const envUsername = process.env.SUPERADMIN_USERNAME;
+    const normalizedLoginId = rawLoginId.toLowerCase();
+    const envUsername = (process.env.SUPERADMIN_USERNAME || '').trim();
+    const envEmail = (process.env.SUPERADMIN_EMAIL || process.env.EMAIL_USER || '').trim();
     const envPassword = process.env.SUPERADMIN_PASSWORD;
 
-    // Compare credentials with environment variables
-    if (username !== envUsername || password !== envPassword) {
-      await createAuditLog({
-        req,
-        action: AUDIT_ACTIONS.LOGIN_FAILED,
-        entityType: 'Auth',
-        entityId: username || 'superadmin',
-        userId: username || 'superadmin',
-        userRole: 'superadmin',
-        details: { reason: 'Invalid Super Admin credentials', attemptedUsername: username }
+    // 1. Check Super Admin Credentials (via environment variables)
+    const isSuperAdmin =
+      (envUsername && (normalizedLoginId === envUsername.toLowerCase() || rawLoginId === envUsername)) ||
+      (envEmail && normalizedLoginId === envEmail.toLowerCase());
+
+    if (isSuperAdmin) {
+      if (password === envPassword) {
+        const payload = {
+          role: 'superadmin',
+          username: envUsername
+        };
+
+        const token = jwt.sign(payload, process.env.JWT_SECRET, {
+          expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+        });
+
+        await createAuditLog({
+          req,
+          action: AUDIT_ACTIONS.LOGIN,
+          entityType: 'Auth',
+          entityId: 'superadmin',
+          userId: envUsername,
+          userRole: 'superadmin',
+          details: { username: envUsername }
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Super Admin login successful',
+          token,
+          user: {
+            role: 'superadmin',
+            username: envUsername
+          }
+        });
+      } else {
+        await createAuditLog({
+          req,
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          entityType: 'Auth',
+          entityId: rawLoginId,
+          userId: rawLoginId,
+          userRole: 'superadmin',
+          details: { reason: 'Invalid Super Admin credentials', attemptedUsername: rawLoginId }
+        });
+
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+    }
+
+    // 2. Check Admin Collection
+    const admin = await Admin.findOne({
+      $or: [
+        { email: normalizedLoginId },
+        { username: rawLoginId }
+      ]
+    });
+
+    if (admin) {
+      if (admin.status !== 'active') {
+        await createAuditLog({
+          req,
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          entityType: 'Admin',
+          entityId: admin._id.toString(),
+          userId: admin._id.toString(),
+          userRole: 'admin',
+          details: { email: admin.email, reason: 'Admin account inactive' }
+        });
+
+        return res.status(403).json({
+          success: false,
+          message: 'Admin account is inactive. Please contact Super Admin.'
+        });
+      }
+
+      const isMatch = await admin.comparePassword(password);
+      if (!isMatch) {
+        await createAuditLog({
+          req,
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          entityType: 'Admin',
+          entityId: admin._id.toString(),
+          userId: admin._id.toString(),
+          userRole: 'admin',
+          details: { email: admin.email, reason: 'Incorrect password' }
+        });
+
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      const payload = {
+        userId: admin._id.toString(),
+        role: admin.role,
+        username: admin.username,
+        email: admin.email
+      };
+
+      const token = jwt.sign(payload, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN || '1d'
       });
 
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid Super Admin credentials.'
+      await createAuditLog({
+        req,
+        action: AUDIT_ACTIONS.LOGIN,
+        entityType: 'Admin',
+        entityId: admin._id.toString(),
+        userId: admin._id.toString(),
+        userRole: 'admin',
+        details: { username: admin.username, email: admin.email }
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Admin login successful',
+        token,
+        user: {
+          id: admin._id,
+          username: admin.username,
+          name: admin.name,
+          email: admin.email,
+          phone: admin.phone,
+          role: admin.role,
+          status: admin.status
+        }
       });
     }
 
-    // Generate JWT token with required payload
-    const payload = {
-      role: 'superadmin',
-      username: process.env.SUPERADMIN_USERNAME
-    };
+    // 3. Check Employee Collection
+    const employee = await Employee.findOne({
+      $or: [
+        { email: normalizedLoginId },
+        { employeeId: rawLoginId.toUpperCase() }
+      ],
+      isArchived: false
+    }).select('+password');
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '1d'
-    });
+    if (employee) {
+      if (employee.status !== 'Active') {
+        await createAuditLog({
+          req,
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          entityType: 'Employee',
+          entityId: employee._id.toString(),
+          userId: employee.employeeId,
+          userRole: 'employee',
+          details: { employeeId: employee.employeeId, reason: 'Employee account inactive' }
+        });
 
-    // Log successful Super Admin login
+        return res.status(403).json({
+          success: false,
+          message: 'Employee account is inactive. Please contact Admin.'
+        });
+      }
+
+      const isMatch = await employee.comparePassword(password);
+      if (!isMatch) {
+        await createAuditLog({
+          req,
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          entityType: 'Employee',
+          entityId: employee._id.toString(),
+          userId: employee.employeeId,
+          userRole: 'employee',
+          details: { employeeId: employee.employeeId, reason: 'Incorrect password' }
+        });
+
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      const payload = {
+        id: employee._id.toString(),
+        userId: employee._id.toString(),
+        employeeId: employee.employeeId,
+        role: 'employee',
+        tokenVersion: employee.tokenVersion || 0
+      };
+
+      const token = jwt.sign(payload, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+      });
+
+      await createAuditLog({
+        req,
+        action: AUDIT_ACTIONS.LOGIN,
+        entityType: 'Employee',
+        entityId: employee._id.toString(),
+        userId: employee.employeeId,
+        userRole: 'employee',
+        details: { employeeId: employee.employeeId, email: employee.email }
+      });
+
+      const employeeData = {
+        id: employee._id.toString(),
+        employeeId: employee.employeeId,
+        fullName: employee.fullName,
+        name: employee.fullName,
+        email: employee.email,
+        phone: employee.phone,
+        role: 'employee',
+        assignedOperationalArea: employee.assignedOperationalArea,
+        village: employee.village,
+        status: employee.status
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: 'Employee login successful',
+        token,
+        user: employeeData,
+        employee: employeeData // backward compatibility
+      });
+    }
+
+    // 4. No Matching Account Found
     await createAuditLog({
       req,
-      action: AUDIT_ACTIONS.LOGIN,
+      action: AUDIT_ACTIONS.LOGIN_FAILED,
       entityType: 'Auth',
-      entityId: 'superadmin',
-      userId: process.env.SUPERADMIN_USERNAME || 'superadmin',
-      userRole: 'superadmin',
-      details: { username: process.env.SUPERADMIN_USERNAME }
+      userId: rawLoginId,
+      userRole: 'unknown',
+      details: { attemptedIdentifier: rawLoginId, reason: 'Account not found' }
     });
 
-    // Return successful response without exposing password
-    return res.status(200).json({
-      success: true,
-      message: 'Super Admin login successful',
-      token,
-      user: {
-        role: 'superadmin',
-        username: process.env.SUPERADMIN_USERNAME
-      }
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid credentials'
     });
   } catch (error) {
     next(error);
@@ -82,120 +274,14 @@ export const superAdminLogin = async (req, res, next) => {
 };
 
 /**
- * Admin Login
- * Route: POST /api/auth/login or POST /api/auth/admin/login
- * Authenticates Admin accounts stored in MongoDB
+ * Super Admin Login (Legacy / Dedicated Route)
  */
-export const adminLogin = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
+export const superAdminLogin = unifiedLogin;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and password are required'
-      });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    // Find Admin by email
-    const admin = await Admin.findOne({ email: normalizedEmail });
-
-    if (!admin) {
-      await createAuditLog({
-        req,
-        action: AUDIT_ACTIONS.LOGIN_FAILED,
-        entityType: 'Admin',
-        userId: normalizedEmail,
-        userRole: 'admin',
-        details: { email: normalizedEmail, reason: 'Admin account not found' }
-      });
-
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
-
-    // Verify account status
-    if (admin.status !== 'active') {
-      await createAuditLog({
-        req,
-        action: AUDIT_ACTIONS.LOGIN_FAILED,
-        entityType: 'Admin',
-        entityId: admin._id.toString(),
-        userId: admin._id.toString(),
-        userRole: 'admin',
-        details: { email: normalizedEmail, reason: 'Admin account inactive' }
-      });
-
-      return res.status(403).json({
-        success: false,
-        message: 'Admin account is inactive. Please contact Super Admin.'
-      });
-    }
-
-    // Compare password with bcrypt hash
-    const isMatch = await admin.comparePassword(password);
-    if (!isMatch) {
-      await createAuditLog({
-        req,
-        action: AUDIT_ACTIONS.LOGIN_FAILED,
-        entityType: 'Admin',
-        entityId: admin._id.toString(),
-        userId: admin._id.toString(),
-        userRole: 'admin',
-        details: { email: normalizedEmail, reason: 'Incorrect password' }
-      });
-
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
-
-    // Generate JWT
-    const payload = {
-      userId: admin._id.toString(),
-      role: admin.role,
-      username: admin.username,
-      email: admin.email
-    };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '1d'
-    });
-
-    // Log successful Admin login
-    await createAuditLog({
-      req,
-      action: AUDIT_ACTIONS.LOGIN,
-      entityType: 'Admin',
-      entityId: admin._id.toString(),
-      userId: admin._id.toString(),
-      userRole: 'admin',
-      details: { username: admin.username, email: admin.email }
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: 'Admin login successful',
-      token,
-      user: {
-        id: admin._id,
-        username: admin.username,
-        name: admin.name,
-        email: admin.email,
-        phone: admin.phone,
-        role: admin.role,
-        status: admin.status
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+/**
+ * Admin Login (Legacy / Dedicated Route)
+ */
+export const adminLogin = unifiedLogin;
 
 /**
  * Forgot Password - Send OTP

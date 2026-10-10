@@ -37,6 +37,41 @@ export const swaggerDocument = {
           }
         }
       },
+      UnifiedLoginRequest: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'admin@knfinance.com'
+          },
+          password: {
+            type: 'string',
+            example: 'password123'
+          }
+        }
+      },
+      UnifiedLoginResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'Login successful' },
+          token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          user: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '66f3a987b654c321d012e999' },
+              role: { type: 'string', enum: ['superadmin', 'admin', 'employee'], example: 'admin' },
+              username: { type: 'string', example: 'admin01' },
+              name: { type: 'string', example: 'Admin One' },
+              email: { type: 'string', example: 'admin@knfinance.com' },
+              phone: { type: 'string', example: '9876543210' },
+              status: { type: 'string', example: 'active' }
+            }
+          }
+        }
+      },
       SuperAdminLoginRequest: {
         type: 'object',
         required: ['username', 'password'],
@@ -857,14 +892,14 @@ export const swaggerDocument = {
     '/api/auth/login': {
       post: {
         tags: ['Authentication'],
-        summary: 'Admin Login',
-        description: 'Authenticate as an Admin using email and password to obtain a JWT bearer token.',
+        summary: 'Unified Login (Single Sign-On for Super Admin, Admin & Employee)',
+        description: 'Single unified POST endpoint to authenticate any user role (Super Admin, Admin, or Employee) using email and password. Auto-detects the account type, verifies active status, and returns a role-specific JWT bearer token and user profile.',
         requestBody: {
           required: true,
           content: {
             'application/json': {
               schema: {
-                $ref: '#/components/schemas/AdminLoginRequest'
+                $ref: '#/components/schemas/UnifiedLoginRequest'
               }
             }
           }
@@ -875,7 +910,7 @@ export const swaggerDocument = {
             content: {
               'application/json': {
                 schema: {
-                  $ref: '#/components/schemas/AdminLoginResponse'
+                  $ref: '#/components/schemas/UnifiedLoginResponse'
                 }
               }
             }
@@ -897,7 +932,7 @@ export const swaggerDocument = {
             }
           },
           403: {
-            description: 'Admin account is inactive',
+            description: 'Account is inactive',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' }
