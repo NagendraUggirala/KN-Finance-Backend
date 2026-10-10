@@ -2874,6 +2874,364 @@ export const swaggerDocument = {
           }
         }
       }
+    },
+    '/api/v1/employee/ledger/search': {
+      get: {
+        tags: ['Employee Portal'],
+        summary: 'Scoped Borrower Fast Search',
+        description: 'Fast, autocomplete-enabled search by Serial Number, Telugu Name, English Name, or Product Item, scoped to the active ledger and employee route.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'query',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Search term (e.g., 12, రాజేష్, Rajesh, గాజులు)'
+          },
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['Active', 'Closed', 'All'], default: 'Active' },
+            description: 'Filter by account closure status'
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', default: 15 },
+            description: 'Maximum items to return'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Matching borrowers retrieved',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Matching borrowers retrieved' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        borrowers: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string', example: '66f3b111a123b456c789d001' },
+                              sNo: { type: 'number', example: 12 },
+                              borrowDate: { type: 'string', example: '03-08' },
+                              nameTelugu: { type: 'string', example: 'కృష్ణారావు' },
+                              nameEnglish: { type: 'string', example: 'Krishna Rao' },
+                              productItem: { type: 'string', example: 'బంగారు గాజులు' },
+                              principalAmount: { type: 'number', example: 15000 },
+                              remainingBalance: { type: 'number', example: 12500 },
+                              totalPaid: { type: 'number', example: 2500 },
+                              isClosed: { type: 'boolean', example: false }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/employee/ledger/borrower/{id}': {
+      get: {
+        tags: ['Employee Portal'],
+        summary: 'Single Borrower Ledger Dossier & Installment Matrix',
+        description: 'Fetches the full ledger dossier for the selected borrower, including date columns and installment payments map.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Borrower row ID'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Borrower dossier retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        borrower: { type: 'object' },
+                        dateColumns: { type: 'array', items: { type: 'string' } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          404: {
+            description: 'Borrower not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          }
+        }
+      },
+      patch: {
+        tags: ['Employee Portal'],
+        summary: 'Borrower Details Update',
+        description: 'Update core details (names, item, amount) for a specific borrower record.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Borrower row ID'
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  nameTelugu: { type: 'string' },
+                  nameEnglish: { type: 'string' },
+                  productItem: { type: 'string' },
+                  borrowDate: { type: 'string' },
+                  principalAmount: { type: 'number' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Borrower details updated successfully'
+          }
+        }
+      }
+    },
+    '/api/v1/employee/ledger/borrower/{id}/payment': {
+      post: {
+        tags: ['Employee Portal'],
+        summary: 'Atomic Single-Borrower Installment Payment',
+        description: 'Atomically records an installment collection on an isolated borrower row with automatic balance recalculation.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Borrower row ID'
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['amount'],
+                properties: {
+                  columnIndex: {
+                    type: 'integer',
+                    description: 'Installment column index (0 = వాయిదా 1, 1 = వాయిదా 2, etc.). If omitted, automatically selects the next empty column.',
+                    example: 0
+                  },
+                  paymentDate: { type: 'string', example: '08-08' },
+                  amount: { type: 'number', example: 500 },
+                  paymentType: { type: 'string', enum: ['Cash', 'UPI', 'Card'], default: 'Cash' },
+                  notes: { type: 'string', example: 'Collected on field route' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Payment recorded successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Payment recorded successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        receiptNo: { type: 'string', example: 'REC-202610-5421' },
+                        borrowerId: { type: 'string', example: '66f3b111a123b456c789d001' },
+                        columnIndex: { type: 'number', example: 3 },
+                        amount: { type: 'number', example: 1600 },
+                        remainingBalance: { type: 'number', example: 10900 },
+                        totalPaid: { type: 'number', example: 8000 },
+                        paymentType: { type: 'string', example: 'Cash' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/v1/employee/ledger/borrower/{id}/status': {
+      patch: {
+        tags: ['Employee Portal'],
+        summary: 'Toggle Borrower Status (Close/Reopen)',
+        description: 'Allows field officer or administrator to mark an account as Closed or Reopened.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Borrower row ID'
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['isClosed'],
+                properties: {
+                  isClosed: { type: 'boolean', example: true }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Status updated successfully'
+          }
+        }
+      }
+    },
+    '/api/v1/employee/expenses': {
+      post: {
+        tags: ['Employee Portal'],
+        summary: 'Log Field Operating Expense',
+        description: 'Records fuel, bike maintenance, meals, or other field operating expenses for daily reconciliation.',
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['category', 'amount'],
+                properties: {
+                  date: { type: 'string', example: '2026-10-10' },
+                  category: {
+                    type: 'string',
+                    enum: [
+                      'Fuel/Petrol',
+                      'Food/Meals',
+                      'Bike Maintenance',
+                      'Tea/Snacks',
+                      'Mobile/Recharge',
+                      'Travel/Bus/Auto',
+                      'Stationery/Printing',
+                      'Emergency',
+                      'Other'
+                    ],
+                    example: 'Fuel/Petrol'
+                  },
+                  amount: { type: 'number', example: 250 },
+                  description: { type: 'string', example: 'Bike petrol for Rampur route' },
+                  receiptNumber: { type: 'string', example: 'HP-4091' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Expense logged successfully'
+          }
+        }
+      },
+      get: {
+        tags: ['Employee Portal'],
+        summary: 'List Field Operating Expenses',
+        description: 'Retrieves operating expenses, with optional date filtering.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'date',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Filter by exact date (YYYY-MM-DD)'
+          },
+          {
+            name: 'startDate',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Range start (YYYY-MM-DD)'
+          },
+          {
+            name: 'endDate',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Range end (YYYY-MM-DD)'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Expenses list and total retrieved successfully'
+          }
+        }
+      }
+    },
+    '/api/v1/employee/expenses/{id}': {
+      delete: {
+        tags: ['Employee Portal'],
+        summary: 'Delete Operating Expense',
+        description: 'Deletes an operating expense record.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'Expense ID'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Expense deleted successfully'
+          }
+        }
+      }
     }
   }
 };

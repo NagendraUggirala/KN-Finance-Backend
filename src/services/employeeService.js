@@ -4,6 +4,7 @@ import Employee from '../models/Employee.js';
 import FinanceRecord from '../models/FinanceRecord.js';
 import LedgerBorrowerRow from '../models/LedgerBorrowerRow.js';
 import LedgerInstallmentPayment from '../models/LedgerInstallmentPayment.js';
+import LedgerDateColumn from '../models/LedgerDateColumn.js';
 import AuditLog from '../models/AuditLog.js';
 import { isValidObjectId } from '../utils/financeValidators.js';
 import { createAuditLog, AUDIT_ACTIONS } from './auditLogService.js';
@@ -599,41 +600,105 @@ export const recordCollection = async ({ employee, borrowerId, amount, paymentDa
     throw error;
   }
 
-  // Find borrower record
+  // Find borrower record across FinanceRecord and LedgerBorrowerRow
   let financeRecord = null;
-  if (isValidObjectId(borrowerId)) {
-    financeRecord = await FinanceRecord.findById(borrowerId);
-  }
+  let borrowerRow = null;
 
-  if (!financeRecord) {
-    // Check if borrowerId is from LedgerBorrowerRow
-    const borrowerRow = isValidObjectId(borrowerId) ? await LedgerBorrowerRow.findById(borrowerId) : null;
+  if (isValidObjectId(borrowerId)) {
+    borrowerRow = await LedgerBorrowerRow.findById(borrowerId);
     if (borrowerRow && borrowerRow.financeRecordId) {
       financeRecord = await FinanceRecord.findById(borrowerRow.financeRecordId);
+    } else if (!borrowerRow) {
+      financeRecord = await FinanceRecord.findById(borrowerId);
+      if (financeRecord) {
+        borrowerRow = await LedgerBorrowerRow.findOne({ financeRecordId: financeRecord._id });
+      }
     }
   }
 
-  if (!financeRecord) {
+  if (!financeRecord && !borrowerRow) {
     const error = new Error('Borrower record not found');
     error.status = 404;
     throw error;
   }
 
-  if (financeRecord.status === 'closed') {
+  const isClosed = financeRecord ? financeRecord.status === 'closed' : borrowerRow?.isClosed;
+  if (isClosed) {
     const error = new Error('Cannot collect payment for a closed borrower account');
     error.status = 400;
     throw error;
   }
 
-  // Update finance record totals
-  financeRecord.totalPaid = (financeRecord.totalPaid || 0) + numAmount;
-  financeRecord.remainingBalance = Math.max(0, (financeRecord.targetAmount || 0) - financeRecord.totalPaid);
+  const formattedPaymentDate = paymentDate || new Date().toISOString().split('T')[0];
+  const collector = employee.employeeId || employee.username || employee.id || 'employee';
 
-  if (financeRecord.remainingBalance <= 0 && financeRecord.totalPaid > 0) {
-    financeRecord.status = 'closed';
+  // 1. If LedgerBorrowerRow exists, record the installment in the Finance Book ledger
+  if (borrowerRow) {
+    // Determine next available columnIndex
+    const existingPayments = await LedgerInstallmentPayment.find({ rowId: borrowerRow._id }).lean();
+    const usedIndices = new Set(existingPayments.map((p) => p.columnIndex));
+    let nextColumnIndex = 0;
+    while (usedIndices.has(nextColumnIndex)) {
+      nextColumnIndex++;
+    }
+
+    // Record in LedgerInstallmentPayment
+    await LedgerInstallmentPayment.findOneAndUpdate(
+      { rowId: borrowerRow._id, columnIndex: nextColumnIndex },
+      {
+        $set: {
+          rowId: borrowerRow._id,
+          columnIndex: nextColumnIndex,
+          paymentDate: formattedPaymentDate,
+          amount: numAmount,
+          paymentType,
+          collectedBy: collector
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    // Auto-create LedgerDateColumn in the ledger book if missing
+    try {
+      const existingCol = await LedgerDateColumn.findOne({
+        ledgerBookId: borrowerRow.ledgerBookId,
+        columnIndex: nextColumnIndex
+      });
+
+      if (!existingCol) {
+        await LedgerDateColumn.create({
+          ledgerBookId: borrowerRow.ledgerBookId,
+          columnIndex: nextColumnIndex,
+          headerDate: formattedPaymentDate,
+          labelTelugu: `వాయిదా ${nextColumnIndex + 1}`
+        });
+      }
+    } catch (colErr) {
+      console.log('Notice: ledger date column auto-create:', colErr?.message || 'OK');
+    }
+
+    // Recalculate totals on LedgerBorrowerRow
+    const allRowPayments = await LedgerInstallmentPayment.find({ rowId: borrowerRow._id }).lean();
+    const rowTotalPaid = allRowPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const rowRemaining = Math.max(0, (borrowerRow.initialRemaining || 0) - rowTotalPaid);
+
+    if (rowRemaining === 0 && rowTotalPaid > 0) {
+      borrowerRow.isClosed = true;
+    }
+    await borrowerRow.save();
   }
 
-  await financeRecord.save();
+  // 2. Synchronize FinanceRecord
+  if (financeRecord) {
+    financeRecord.totalPaid = (financeRecord.totalPaid || 0) + numAmount;
+    financeRecord.remainingBalance = Math.max(0, (financeRecord.targetAmount || 0) - financeRecord.totalPaid);
+
+    if (financeRecord.remainingBalance <= 0 && financeRecord.totalPaid > 0) {
+      financeRecord.status = 'closed';
+    }
+
+    await financeRecord.save();
+  }
 
   // Log collection in AuditLog
   await createAuditLog({
@@ -641,27 +706,31 @@ export const recordCollection = async ({ employee, borrowerId, amount, paymentDa
     userRole: 'employee',
     action: AUDIT_ACTIONS.UPDATE,
     entityType: 'FinanceRecord',
-    entityId: financeRecord._id.toString(),
+    entityId: (financeRecord?._id || borrowerRow?._id).toString(),
     details: {
       actionType: 'EMPLOYEE_COLLECTION',
-      borrowerNameTelugu: financeRecord.borrowerNameTelugu,
+      borrowerNameTelugu: financeRecord?.borrowerNameTelugu || borrowerRow?.nameTelugu,
       amount: numAmount,
-      paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+      paymentDate: formattedPaymentDate,
       paymentType,
-      collectedBy: employee.employeeId || employee.id
+      collectedBy: collector
     }
   });
 
+  const finalBorrower = financeRecord || borrowerRow;
+  const finalTotalPaid = financeRecord ? financeRecord.totalPaid : (borrowerRow ? (borrowerRow.initialRemaining - (borrowerRow.remainingBalance || 0)) : numAmount);
+  const finalRemaining = financeRecord ? financeRecord.remainingBalance : borrowerRow?.initialRemaining;
+
   return {
-    borrowerId: financeRecord._id.toString(),
-    borrowerNameTelugu: financeRecord.borrowerNameTelugu,
-    borrowerNameEnglish: financeRecord.borrowerNameEnglish,
+    borrowerId: borrowerRow ? borrowerRow._id.toString() : financeRecord._id.toString(),
+    borrowerNameTelugu: finalBorrower.borrowerNameTelugu || finalBorrower.nameTelugu,
+    borrowerNameEnglish: finalBorrower.borrowerNameEnglish || finalBorrower.nameEnglish,
     amount: numAmount,
-    totalPaid: financeRecord.totalPaid,
-    remainingBalance: financeRecord.remainingBalance,
-    status: financeRecord.status,
-    collectedBy: employee.employeeId || employee.id,
-    paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+    totalPaid: finalTotalPaid,
+    remainingBalance: finalRemaining,
+    status: (financeRecord?.status || (borrowerRow?.isClosed ? 'closed' : 'active')),
+    collectedBy: collector,
+    paymentDate: formattedPaymentDate,
     paymentType
   };
 };
