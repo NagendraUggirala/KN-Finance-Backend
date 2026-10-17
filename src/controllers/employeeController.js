@@ -156,7 +156,7 @@ export const searchLedger = async (req, res, next) => {
 export const getBorrowerDossier = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const result = await getSingleBorrowerDossier({ borrowerId: id });
+    const result = await getSingleBorrowerDossier({ borrowerId: id, user: req.user });
 
     return res.status(200).json({
       success: true,

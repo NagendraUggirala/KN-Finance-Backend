@@ -3,6 +3,7 @@ import LedgerBook from '../models/LedgerBook.js';
 import LedgerDateColumn from '../models/LedgerDateColumn.js';
 import LedgerBorrowerRow from '../models/LedgerBorrowerRow.js';
 import LedgerInstallmentPayment from '../models/LedgerInstallmentPayment.js';
+import Admin from '../models/Admin.js';
 import AuditLog from '../models/AuditLog.js';
 import {
   calculateInitialRemaining,
@@ -91,12 +92,86 @@ export const addSevenDaysToDateStr = (dateStr) => {
 };
 
 /**
- * Finds the active LedgerBook or creates the initial default active LedgerBook
+ * Resolves the target adminId from the request user context and query/param overrides.
+ * - If adminId is explicitly provided (e.g. Superadmin inspecting an admin): uses that adminId.
+ * - If user is an Admin: uses their own userId / id.
+ * - If user is an Employee: uses their assigned adminId.
+ * - If user is Superadmin: defaults to null (master ledger) unless adminId is passed.
  */
-export const getOrCreateActiveLedgerBook = async (session = null) => {
-  let ledgerBook = await LedgerBook.findOne({ isActive: true }).session(session);
+export const resolveAdminId = ({ user = null, adminId = null } = {}) => {
+  if (adminId) return adminId;
+  if (!user) return null;
+  if (user.role === 'admin') {
+    return user.userId || user.id || user._id || null;
+  }
+  if (user.role === 'employee') {
+    return user.adminId || null;
+  }
+  if (user.role === 'superadmin') {
+    return adminId || null;
+  }
+  return null;
+};
+
+/**
+ * Finds the active LedgerBook for the given admin or creates an isolated active LedgerBook
+ * Supports both:
+ *   getOrCreateActiveLedgerBook(session) [legacy positional]
+ *   getOrCreateActiveLedgerBook({ session, adminId, user }) [multi-tenant object]
+ */
+export const getOrCreateActiveLedgerBook = async (optionsOrSession = null) => {
+  let session = null;
+  let adminId = null;
+  let user = null;
+
+  // Detect if first argument is a Mongoose ClientSession
+  if (optionsOrSession && optionsOrSession.constructor && optionsOrSession.constructor.name === 'ClientSession') {
+    session = optionsOrSession;
+  } else if (optionsOrSession && typeof optionsOrSession === 'object') {
+    session = optionsOrSession.session || null;
+    adminId = optionsOrSession.adminId || null;
+    user = optionsOrSession.user || null;
+  }
+
+  const targetAdminId = adminId || resolveAdminId({ user });
+
+  // If a specific adminId is resolved (Admin user or Employee of Admin)
+  if (targetAdminId) {
+    let ledgerBook = await LedgerBook.findOne({ adminId: targetAdminId, isActive: true }).session(session);
+    if (!ledgerBook) {
+      let adminName = user?.name || user?.username || '';
+      if (!adminName && isValidObjectId(targetAdminId)) {
+        try {
+          const adminDoc = await Admin.findById(targetAdminId).lean();
+          if (adminDoc) adminName = adminDoc.name || adminDoc.username || '';
+        } catch (_) {}
+      }
+
+      const branchCode = targetAdminId.toString().slice(-4).toUpperCase();
+      const newBook = new LedgerBook({
+        adminId: targetAdminId,
+        branchId: `KN-${branchCode}`,
+        title: adminName
+          ? `${adminName.toUpperCase()} - FINANCE BOOK LEDGER`
+          : `KN FINANCE - FINANCE BOOK LEDGER`,
+        academicYear: '2026-2027',
+        isActive: true,
+        version: 1
+      });
+      ledgerBook = await newBook.save({ session });
+    }
+    return ledgerBook;
+  }
+
+  // Master / Global ledger book (Superadmin without adminId, or backward compatibility)
+  let ledgerBook = await LedgerBook.findOne({
+    isActive: true,
+    $or: [{ adminId: null }, { adminId: { $exists: false } }]
+  }).session(session);
+
   if (!ledgerBook) {
     const newBook = new LedgerBook({
+      adminId: null,
       branchId: 'NY-104',
       title: 'KN FINANCE - FINANCE BOOK LEDGER',
       academicYear: '2026-2027',
@@ -109,10 +184,11 @@ export const getOrCreateActiveLedgerBook = async (session = null) => {
 };
 
 /**
- * Retrieves the full active ledger state with calculations and totals
+ * Retrieves the full active ledger state with calculations and totals, scoped to the user's admin workspace
  */
-export const getActiveLedgerData = async () => {
-  const ledgerBook = await getOrCreateActiveLedgerBook();
+export const getActiveLedgerData = async (options = {}) => {
+  const { user = null, adminId = null } = options || {};
+  const ledgerBook = await getOrCreateActiveLedgerBook({ user, adminId });
 
   // Load date columns sorted by columnIndex
   const dateColumns = await LedgerDateColumn.find({ ledgerBookId: ledgerBook._id })
@@ -222,7 +298,7 @@ export const addInstallmentColumn = async ({ ledgerBookId, user }) => {
       ledgerBook = await LedgerBook.findById(ledgerBookId).session(session);
     }
     if (!ledgerBook) {
-      ledgerBook = await getOrCreateActiveLedgerBook(session);
+      ledgerBook = await getOrCreateActiveLedgerBook({ session, user });
     }
 
     // Find the last column
@@ -293,7 +369,7 @@ export const deleteInstallmentColumn = async ({ ledgerBookId, columnIndex, user 
       ledgerBook = await LedgerBook.findById(ledgerBookId).session(session);
     }
     if (!ledgerBook) {
-      ledgerBook = await getOrCreateActiveLedgerBook(session);
+      ledgerBook = await getOrCreateActiveLedgerBook({ session, user });
     }
 
     // Check if target column exists
@@ -389,7 +465,7 @@ export const createBorrowerRow = async ({ data, user }) => {
       ledgerBook = await LedgerBook.findById(data.ledgerBookId).session(session);
     }
     if (!ledgerBook) {
-      ledgerBook = await getOrCreateActiveLedgerBook(session);
+      ledgerBook = await getOrCreateActiveLedgerBook({ session, user });
     }
 
     // Find current max sNo
@@ -765,7 +841,7 @@ export const batchSaveLedger = async ({ ledgerBookId, version, dateColumns, rows
       ledgerBook = await LedgerBook.findById(ledgerBookId).session(session);
     }
     if (!ledgerBook) {
-      ledgerBook = await getOrCreateActiveLedgerBook(session);
+      ledgerBook = await getOrCreateActiveLedgerBook({ session, user });
     }
 
     // Optimistic Concurrency Check (if version is supplied)

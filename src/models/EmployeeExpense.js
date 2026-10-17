@@ -8,6 +8,12 @@ const employeeExpenseSchema = new mongoose.Schema(
       required: [true, 'Employee ID is required'],
       index: true
     },
+    adminId: {
+      type: mongoose.Schema.Types.Mixed,
+      ref: 'Admin',
+      default: null,
+      index: true
+    },
     paidBy: {
       type: String,
       trim: true,

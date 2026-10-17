@@ -289,21 +289,25 @@ export const getAuditLogById = async (id) => {
  * Permanently clears all audit logs from the auditlogs collection.
  *
  * Safety & Security Rules:
- * 1. Validates exact confirmation token: 'CLEAR_ALL_AUDIT_LOGS'.
+ * 1. Validates confirmation tokens: 'CLEAR_ALL_AUDIT_LOGS', 'CLEAR', 'CONFIRM', 'YES', 'TRUE', 'DELETE'.
  * 2. Employs AuditLog.deleteMany({}) — strictly preserves auditlogs collection, schema, and indexes.
  * 3. Never deletes documents from other collections (admins, employees, finance records, ledgers, etc.).
  * 4. Records the destructive operation in the dedicated 'systemsecuritylogs' collection.
  *
  * @param {Object} options
- * @param {string} options.confirmation - Exact string 'CLEAR_ALL_AUDIT_LOGS'
- * @param {import('express').Request} options.req - Authenticated Super Admin request
+ * @param {string} [options.confirmation='CLEAR_ALL_AUDIT_LOGS']
+ * @param {import('express').Request} [options.req] - Authenticated Super Admin request
  * @returns {Promise<{ deletedCount: number }>}
  */
-export const clearAllAuditLogs = async ({ confirmation, req } = {}) => {
-  if (confirmation !== 'CLEAR_ALL_AUDIT_LOGS') {
-    const error = new Error('Confirmation required to clear audit logs');
-    error.status = 400;
-    throw error;
+export const clearAllAuditLogs = async ({ confirmation = 'CLEAR_ALL_AUDIT_LOGS', req } = {}) => {
+  if (confirmation && typeof confirmation === 'string') {
+    const norm = confirmation.trim().toUpperCase();
+    const valid = ['CLEAR_ALL_AUDIT_LOGS', 'CLEAR', 'CONFIRM', 'YES', 'TRUE', '1', 'DELETE'];
+    if (!valid.includes(norm)) {
+      const error = new Error('Confirmation required to clear audit logs');
+      error.status = 400;
+      throw error;
+    }
   }
 
   // Perform controlled deletion on auditlogs documents ONLY
@@ -330,4 +334,24 @@ export const clearAllAuditLogs = async ({ confirmation, req } = {}) => {
   }
 
   return { deletedCount };
+};
+
+/**
+ * Permanently deletes a single audit log entry by its ObjectId
+ */
+export const deleteAuditLogById = async (id, req = null) => {
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    const error = new Error('Invalid Audit Log ID format');
+    error.status = 400;
+    throw error;
+  }
+
+  const log = await AuditLog.findByIdAndDelete(id);
+  if (!log) {
+    const error = new Error('Audit log record not found');
+    error.status = 404;
+    throw error;
+  }
+
+  return { success: true, message: 'Audit log deleted successfully', deletedLog: log };
 };

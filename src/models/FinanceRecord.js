@@ -66,6 +66,12 @@ const financeRecordSchema = new mongoose.Schema(
       ref: 'LedgerBook',
       index: true
     },
+    adminId: {
+      type: mongoose.Schema.Types.Mixed,
+      ref: 'Admin',
+      default: null,
+      index: true
+    },
 
     createdBy: {
       type: String,
@@ -79,6 +85,7 @@ const financeRecordSchema = new mongoose.Schema(
 
 financeRecordSchema.index({ borrowerNameEnglish: 1 });
 financeRecordSchema.index({ borrowerNameTelugu: 1 });
+financeRecordSchema.index({ adminId: 1, status: 1 });
 
 const FinanceRecord = mongoose.model('FinanceRecord', financeRecordSchema);
 

@@ -16,7 +16,7 @@ import { isValidObjectId } from '../utils/financeValidators.js';
  * Scoped to active ledger book and employee operational context.
  */
 export const searchLedgerBorrowers = async ({ query, status = 'Active', limit = 15, user }) => {
-  const activeBook = await getOrCreateActiveLedgerBook();
+  const activeBook = await getOrCreateActiveLedgerBook({ user });
   const filter = { ledgerBookId: activeBook._id };
 
   const normStatus = (status || 'Active').trim().toLowerCase();
@@ -102,14 +102,14 @@ export const searchLedgerBorrowers = async ({ query, status = 'Active', limit = 
  * 3.2. Single Borrower Ledger Dossier & Installment Matrix
  * Retrieves complete history, payment schedule matrix, and date columns for a single borrower.
  */
-export const getSingleBorrowerDossier = async ({ borrowerId }) => {
+export const getSingleBorrowerDossier = async ({ borrowerId, user = null }) => {
   let row = null;
   if (isValidObjectId(borrowerId)) {
     row = await LedgerBorrowerRow.findById(borrowerId).lean();
   }
 
   if (!row && !isNaN(Number(borrowerId))) {
-    const activeBook = await getOrCreateActiveLedgerBook();
+    const activeBook = await getOrCreateActiveLedgerBook({ user });
     row = await LedgerBorrowerRow.findOne({ ledgerBookId: activeBook._id, sNo: Number(borrowerId) }).lean();
   }
 
@@ -472,10 +472,12 @@ export const createEmployeeExpense = async ({ data, user, req }) => {
   }
 
   const employeeId = user?.id || user?.userId || user?._id;
+  const adminId = user?.adminId || (user?.role === 'admin' ? (user.userId || user.id) : null);
   const paidByName = user?.fullName || user?.name || user?.username || 'Field Officer';
 
   const expense = await EmployeeExpense.create({
     employeeId,
+    adminId,
     paidBy: paidByName,
     date: (date || new Date().toISOString().split('T')[0]).trim(),
     category: category.trim(),
@@ -520,6 +522,8 @@ export const getEmployeeExpenses = async ({ date, startDate, endDate, user }) =>
   // If role is employee, scope strictly to their own expenses
   if (user?.role === 'employee') {
     query.employeeId = user.id || user.userId || user._id;
+  } else if (user?.role === 'admin') {
+    query.adminId = user.userId || user.id || user._id;
   }
 
   if (date && date.trim()) {

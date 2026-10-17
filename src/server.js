@@ -47,6 +47,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/superadmin', adminRoutes);
+app.use('/api/v1/superadmin', adminRoutes);
 app.use('/api/v1/finance-book', financeBookRoutes);
 app.use('/api/finance-book', financeBookRoutes);
 app.use('/api/v1/admin/employees', adminEmployeeRoutes);

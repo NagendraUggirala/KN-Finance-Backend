@@ -1,5 +1,10 @@
 import express from 'express';
-import { getAuditLogs, getAuditLogById, clearAuditLogs } from '../controllers/auditLogController.js';
+import {
+  getAuditLogs,
+  getAuditLogById,
+  clearAuditLogs,
+  deleteAuditLog
+} from '../controllers/auditLogController.js';
 import {
   authenticateToken,
   requireAdminOrSuperAdmin,
@@ -19,6 +24,15 @@ router.use(authenticateToken, requireAdminOrSuperAdmin);
 router.get('/', getAuditLogs);
 
 /**
+ * @route   DELETE /api/audit-logs / DELETE /api/audit-logs/clear / POST /api/audit-logs/clear
+ * @desc    Permanently clear all audit logs (Requires Super Admin authorization)
+ * @access  Private (Super Admin only)
+ */
+router.delete('/', requireSuperAdmin, clearAuditLogs);
+router.delete('/clear', requireSuperAdmin, clearAuditLogs);
+router.post('/clear', requireSuperAdmin, clearAuditLogs);
+
+/**
  * @route   GET /api/audit-logs/:id
  * @desc    Get complete audit log details by ID
  * @access  Private (Admin, Super Admin)
@@ -26,10 +40,10 @@ router.get('/', getAuditLogs);
 router.get('/:id', getAuditLogById);
 
 /**
- * @route   DELETE /api/audit-logs
- * @desc    Permanently clear all audit logs (Requires Super Admin authorization and confirmation)
+ * @route   DELETE /api/audit-logs/:id
+ * @desc    Permanently delete a single audit log entry by ID
  * @access  Private (Super Admin only)
  */
-router.delete('/', requireSuperAdmin, clearAuditLogs);
+router.delete('/:id', requireSuperAdmin, deleteAuditLog);
 
 export default router;

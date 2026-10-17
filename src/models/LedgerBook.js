@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const ledgerBookSchema = new mongoose.Schema(
   {
+    adminId: {
+      type: mongoose.Schema.Types.Mixed,
+      ref: 'Admin',
+      default: null,
+      index: true
+    },
     branchId: {
       type: String,
       required: [true, 'Branch ID is required'],
@@ -37,6 +43,7 @@ const ledgerBookSchema = new mongoose.Schema(
 
 // Indexes
 ledgerBookSchema.index({ branchId: 1, isActive: 1 });
+ledgerBookSchema.index({ adminId: 1, isActive: 1 });
 
 const LedgerBook = mongoose.model('LedgerBook', ledgerBookSchema);
 

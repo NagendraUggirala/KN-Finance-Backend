@@ -16,7 +16,7 @@ import { validateBorrowerRowInput } from '../utils/financeValidators.js';
  */
 export const getActiveLedger = async (req, res, next) => {
   try {
-    const data = await getActiveLedgerData();
+    const data = await getActiveLedgerData({ user: req.user, adminId: req.query?.adminId });
     return res.status(200).json({
       success: true,
       message: 'Active finance book ledger retrieved successfully',
@@ -50,8 +50,8 @@ export const batchSave = async (req, res, next) => {
       user: req.user
     });
 
-    // Return the fresh, complete ledger state
-    const refreshedData = await getActiveLedgerData();
+    // Return the fresh, complete ledger state scoped to user
+    const refreshedData = await getActiveLedgerData({ user: req.user, adminId: req.query?.adminId });
 
     return res.status(200).json({
       success: true,

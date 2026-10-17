@@ -99,6 +99,12 @@ const employeeSchema = new mongoose.Schema(
       type: String,
       default: null
     },
+    adminId: {
+      type: mongoose.Schema.Types.Mixed,
+      ref: 'Admin',
+      default: null,
+      index: true
+    },
     createdBy: {
       type: String,
       default: 'admin'

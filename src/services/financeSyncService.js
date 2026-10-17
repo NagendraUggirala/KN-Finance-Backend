@@ -1,4 +1,5 @@
 import FinanceRecord from '../models/FinanceRecord.js';
+import LedgerBook from '../models/LedgerBook.js';
 
 /**
  * Service to handle synchronization between LedgerBorrowerRow and FinanceRecord
@@ -31,6 +32,12 @@ export const syncRowToFinanceRecord = async ({ row, totalPaid = 0, remainingBala
 
     } else {
       // Create a new FinanceRecord and link to row
+      let adminId = null;
+      if (row.ledgerBookId) {
+        const book = await LedgerBook.findById(row.ledgerBookId).session(session);
+        adminId = book?.adminId || null;
+      }
+
       const recordData = {
         borrowerNameTelugu: row.nameTelugu,
         borrowerNameEnglish: row.nameEnglish || '',
@@ -43,6 +50,7 @@ export const syncRowToFinanceRecord = async ({ row, totalPaid = 0, remainingBala
         startDate: row.borrowDate,
         status,
         ledgerBookId: row.ledgerBookId,
+        adminId,
         createdBy: user?.employeeId || user?.username || 'admin'
       };
 

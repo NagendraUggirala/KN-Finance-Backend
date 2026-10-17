@@ -100,7 +100,13 @@ export const createEmployee = async ({ data, adminUser }) => {
     }
   }
 
+  // Resolve adminId: if created by Admin, adminId is admin's id; if created by Super Admin, can be provided in data or null
+  const adminId = adminUser?.role === 'admin'
+    ? (adminUser.userId || adminUser.id || adminUser._id)
+    : (data.adminId || null);
+
   const employee = new Employee({
+    adminId,
     employeeId,
     fullName: fullName.trim(),
     age: Number(age) || 25,
@@ -145,7 +151,22 @@ export const createEmployee = async ({ data, adminUser }) => {
 };
 
 /**
- * Lists employees with search, filtering, and pagination
+ * Helper to verify that an Admin only manages employees belonging to their assigned workspace
+ */
+export const verifyAdminEmployeeOwnership = (employee, adminUser) => {
+  if (!adminUser || adminUser.role === 'superadmin') return;
+  const currentAdminId = (adminUser.userId || adminUser.id || adminUser._id || '').toString();
+  const empAdminId = employee.adminId ? employee.adminId.toString() : '';
+
+  if (empAdminId && empAdminId !== currentAdminId && employee.createdBy !== adminUser.username) {
+    const error = new Error('Access denied. You can only manage your own branch employees.');
+    error.status = 403;
+    throw error;
+  }
+};
+
+/**
+ * Lists employees with search, filtering, pagination, and multi-tenant admin scoping
  */
 export const getEmployees = async ({
   search,
@@ -154,12 +175,27 @@ export const getEmployees = async ({
   status,
   page = 1,
   limit = 10,
-  includeArchived = false
+  includeArchived = false,
+  user = null,
+  adminId = null
 }) => {
   const query = {};
 
   if (!includeArchived) {
     query.isArchived = false;
+  }
+
+  // Multi-tenant admin filtering
+  if (user?.role === 'admin') {
+    const currentAdminId = user.userId || user.id || user._id;
+    query.$or = [
+      { adminId: currentAdminId },
+      { createdBy: user.username }
+    ];
+  } else if (user?.role === 'superadmin' && adminId) {
+    query.adminId = adminId;
+  } else if (adminId) {
+    query.adminId = adminId;
   }
 
   if (status && ['Active', 'Inactive'].includes(status)) {
@@ -223,6 +259,8 @@ export const updateEmployee = async ({ id, data, adminUser }) => {
     error.status = 404;
     throw error;
   }
+
+  verifyAdminEmployeeOwnership(employee, adminUser);
 
   // Prevent password update through this general PUT endpoint
   if (data.password !== undefined) {
@@ -307,6 +345,8 @@ export const changeEmployeeStatus = async ({ id, status, adminUser }) => {
     throw error;
   }
 
+  verifyAdminEmployeeOwnership(employee, adminUser);
+
   const previousStatus = employee.status;
   employee.status = status;
 
@@ -362,6 +402,8 @@ export const resetEmployeePassword = async ({ id, newPassword, adminUser }) => {
     throw error;
   }
 
+  verifyAdminEmployeeOwnership(employee, adminUser);
+
   // Update password and increment tokenVersion to revoke existing sessions
   employee.password = newPassword; // Handled by pre-save hook
   employee.tokenVersion = (employee.tokenVersion || 0) + 1;
@@ -405,6 +447,8 @@ export const archiveOrDeleteEmployee = async ({ id, adminUser }) => {
     error.status = 404;
     throw error;
   }
+
+  verifyAdminEmployeeOwnership(employee, adminUser);
 
   employee.isArchived = true;
   employee.status = 'Inactive';
@@ -494,12 +538,13 @@ export const employeeLogin = async ({ email, username, password }) => {
     throw error;
   }
 
-  // Generate JWT token containing employee identity and tokenVersion
+  // Generate JWT token containing employee identity, adminId, and tokenVersion
   const payload = {
     id: employee._id.toString(),
     userId: employee._id.toString(),
     employeeId: employee.employeeId,
     role: 'employee',
+    adminId: employee.adminId ? employee.adminId.toString() : null,
     tokenVersion: employee.tokenVersion || 0
   };
 
@@ -524,8 +569,11 @@ export const employeeLogin = async ({ email, username, password }) => {
     id: employee._id.toString(),
     employeeId: employee.employeeId,
     fullName: employee.fullName,
+    name: employee.fullName,
     email: employee.email,
     phone: employee.phone,
+    role: 'employee',
+    adminId: employee.adminId ? employee.adminId.toString() : null,
     assignedOperationalArea: employee.assignedOperationalArea,
     village: employee.village,
     status: employee.status
@@ -558,8 +606,12 @@ export const getEmployeeProfile = async (employeeId) => {
  */
 export const getAssignedBorrowers = async (employee) => {
   const operationalArea = employee.assignedOperationalArea;
+  const adminId = employee.adminId || null;
 
   const query = { status: 'active' };
+  if (adminId) {
+    query.adminId = adminId;
+  }
   if (operationalArea) {
     query.$or = [
       { assignedOperationalArea: new RegExp(operationalArea, 'i') },
@@ -571,7 +623,9 @@ export const getAssignedBorrowers = async (employee) => {
 
   // If no area-specific records exist yet, return active borrowers for route inspection
   if (borrowers.length === 0) {
-    borrowers = await FinanceRecord.find({ status: 'active' }).limit(50).lean();
+    const fallbackQuery = { status: 'active' };
+    if (adminId) fallbackQuery.adminId = adminId;
+    borrowers = await FinanceRecord.find(fallbackQuery).limit(50).lean();
   }
 
   return borrowers;

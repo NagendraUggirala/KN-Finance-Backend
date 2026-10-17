@@ -1,7 +1,11 @@
 import mongoose from 'mongoose';
 import Admin from '../models/Admin.js';
+import LedgerBook from '../models/LedgerBook.js';
+import Employee from '../models/Employee.js';
 import { createAuditLog, AUDIT_ACTIONS } from '../services/auditLogService.js';
 import { computeDiff } from '../utils/auditLogSanitizer.js';
+import { sendAdminCredentialsEmail } from '../services/emailService.js';
+import { getOrCreateActiveLedgerBook } from '../services/financeBookService.js';
 
 /**
  * Create a new Admin
@@ -51,6 +55,31 @@ export const createAdmin = async (req, res, next) => {
 
     await admin.save();
 
+    // Provision an isolated active Finance Ledger Book specifically for this Admin
+    let ledgerBook = null;
+    try {
+      ledgerBook = await getOrCreateActiveLedgerBook({
+        adminId: admin._id,
+        user: { name: admin.name, username: admin.username, role: 'admin' }
+      });
+    } catch (bookErr) {
+      console.warn('Notice: Could not pre-provision ledger book immediately, will lazy-load on login:', bookErr.message);
+    }
+
+    // Send credentials (username, email, raw password) via email
+    let emailResult = { sent: false };
+    try {
+      emailResult = await sendAdminCredentialsEmail({
+        to: admin.email,
+        name: admin.name,
+        username: admin.username,
+        email: admin.email,
+        password // Raw password entered during creation
+      });
+    } catch (mailErr) {
+      console.error('Notice: Could not send credentials email:', mailErr.message);
+    }
+
     // Audit log Admin creation automatically
     await createAuditLog({
       req,
@@ -63,14 +92,19 @@ export const createAdmin = async (req, res, next) => {
         email: admin.email,
         phone: admin.phone,
         role: admin.role,
-        status: admin.status
+        status: admin.status,
+        emailDispatched: emailResult.sent,
+        ledgerBookId: ledgerBook?._id?.toString() || null
       }
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Admin created successfully',
-      admin
+      message: 'Admin created successfully and credentials dispatched via email',
+      admin,
+      emailSent: emailResult.sent,
+      emailSimulated: emailResult.simulated || false,
+      ledgerBookId: ledgerBook?._id || null
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -318,6 +352,22 @@ export const deleteAdmin = async (req, res, next) => {
     };
 
     await Admin.findByIdAndDelete(adminId);
+
+    // Deactivate admin's ledger books and archive their employees
+    try {
+      await LedgerBook.updateMany({ adminId }, { isActive: false });
+      await Employee.updateMany(
+        { adminId },
+        {
+          isArchived: true,
+          status: 'Inactive',
+          archivedBy: req.user?.username || 'superadmin',
+          archivedAt: new Date()
+        }
+      );
+    } catch (cleanupErr) {
+      console.warn('Notice: Background cleanup for deleted admin:', cleanupErr.message);
+    }
 
     // Log delete audit
     await createAuditLog({

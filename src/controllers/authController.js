@@ -215,6 +215,7 @@ export const unifiedLogin = async (req, res, next) => {
         userId: employee._id.toString(),
         employeeId: employee.employeeId,
         role: 'employee',
+        adminId: employee.adminId ? employee.adminId.toString() : null,
         tokenVersion: employee.tokenVersion || 0
       };
 
@@ -240,6 +241,7 @@ export const unifiedLogin = async (req, res, next) => {
         email: employee.email,
         phone: employee.phone,
         role: 'employee',
+        adminId: employee.adminId ? employee.adminId.toString() : null,
         assignedOperationalArea: employee.assignedOperationalArea,
         village: employee.village,
         status: employee.status

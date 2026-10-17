@@ -359,3 +359,168 @@ Date: ${new Date().toISOString()}
     return { sent: false, error: error.message, recipientCount: recipientsList.length };
   }
 };
+
+/**
+ * Sends a welcome email containing login credentials (username, email, password) to a newly registered Admin
+ *
+ * @param {Object} options
+ * @param {string} options.to - Admin's destination email
+ * @param {string} options.name - Admin's full name
+ * @param {string} options.username - Admin's assigned username
+ * @param {string} options.email - Admin's registered email
+ * @param {string} options.password - Admin's temporary/initial password
+ * @param {string} [options.loginUrl] - Optional dashboard login URL
+ * @returns {Promise<{ sent: boolean, simulated?: boolean, messageId?: string, error?: string }>}
+ */
+export const sendAdminCredentialsEmail = async ({
+  to,
+  name,
+  username,
+  email,
+  password,
+  loginUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173/login'
+}) => {
+  const mailTransporter = getTransporter();
+  const recipient = (to || email || '').trim();
+
+  if (!recipient) {
+    return { sent: false, error: 'Recipient email address is required' };
+  }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Welcome to KN Finance - Administrator Credentials</title>
+      <style>
+        body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+        .header { background: linear-gradient(135deg, #166534 0%, #14532d 100%); padding: 32px 24px; text-align: center; }
+        .logo-badge { display: inline-block; background-color: rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 8px 18px; margin-bottom: 12px; }
+        .logo-text { color: #D4A017; font-weight: 800; font-size: 24px; letter-spacing: 1.5px; margin: 0; }
+        .header h1 { color: #ffffff; font-size: 20px; font-weight: 700; margin: 6px 0 0 0; }
+        .content { padding: 32px 28px; color: #1e293b; }
+        .greeting { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+        .message { font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px; }
+        .credentials-card { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 22px; margin: 24px 0; }
+        .credentials-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #166534; margin-bottom: 16px; border-bottom: 1px solid #dcfce7; padding-bottom: 8px; }
+        .cred-row { margin-bottom: 12px; font-size: 14px; }
+        .cred-label { color: #4b5563; font-weight: 600; display: inline-block; min-width: 140px; }
+        .cred-value { font-family: 'Courier New', Courier, monospace; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; font-weight: 700; color: #0f172a; display: inline-block; }
+        .pwd-highlight { background-color: #fef08a; border-color: #facc15; color: #854d0e; font-size: 15px; }
+        .btn-wrapper { text-align: center; margin: 32px 0 24px 0; }
+        .btn-login { background-color: #166534; color: #ffffff !important; text-decoration: none; padding: 14px 34px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(22, 101, 52, 0.25); }
+        .warning-card { background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 14px 16px; margin: 24px 0; }
+        .warning-card p { margin: 0; font-size: 13px; color: #92400e; line-height: 1.5; }
+        .warning-title { font-weight: 700; margin-bottom: 4px; }
+        .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px; text-align: center; font-size: 12px; color: #94a3b8; }
+        .footer p { margin: 4px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo-badge">
+            <span class="logo-text">KN FINANCE</span>
+          </div>
+          <h1>Administrator Account Created</h1>
+        </div>
+        <div class="content">
+          <div class="greeting">Hello ${name || 'Administrator'},</div>
+          <p class="message">
+            Welcome to <strong>KN Finance</strong>. Your administrator account has been provisioned by Super Admin.
+            You have full administrative privileges to manage your branch, isolated finance books, and field employees.
+          </p>
+
+          <div class="credentials-card">
+            <div class="credentials-title">🔐 Your Administrator Login Credentials</div>
+            <div class="cred-row">
+              <span class="cred-label">Login Portal:</span>
+              <span class="cred-value">${loginUrl}</span>
+            </div>
+            <div class="cred-row">
+              <span class="cred-label">Registered Email:</span>
+              <span class="cred-value">${email}</span>
+            </div>
+            <div class="cred-row">
+              <span class="cred-label">Username:</span>
+              <span class="cred-value">${username}</span>
+            </div>
+            <div class="cred-row">
+              <span class="cred-label">Temporary Password:</span>
+              <span class="cred-value pwd-highlight">${password}</span>
+            </div>
+          </div>
+
+          <div class="btn-wrapper">
+            <a href="${loginUrl}" target="_blank" class="btn-login">
+              Access Admin Dashboard &rarr;
+            </a>
+          </div>
+
+          <div class="warning-card">
+            <div class="warning-title">🔒 Mandatory Security Advice</div>
+            <p>
+              Please sign in and change your password immediately through your profile settings.
+              Never share your credentials with unauthorized personnel. KN Finance staff will never ask for your password.
+            </p>
+          </div>
+
+          <p class="message" style="margin-bottom: 0;">
+            Best Regards,<br>
+            <strong>KN Finance Executive & Operations Team</strong>
+          </p>
+        </div>
+        <div class="footer">
+          <p>KN Finance • Next-Gen Wealth & Portfolio Management</p>
+          <p>This is an automated system dispatch. Please do not reply directly to this email.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const textContent = `
+KN Finance - Administrator Account Provisioned
+
+Hello ${name || 'Administrator'},
+
+Your administrator account for the KN Finance Management Portal has been created.
+Below are your login credentials:
+
+Login Portal: ${loginUrl}
+Email: ${email}
+Username: ${username}
+Temporary Password: ${password}
+
+SECURITY NOTICE:
+Please sign in immediately and update your password from your account settings. Never share these credentials with anyone.
+
+Best Regards,
+KN Finance Operations Team
+  `.trim();
+
+  if (!mailTransporter) {
+    console.log(`ℹ️ [EmailService] SMTP credentials not set. Simulated admin credentials email to ${recipient}: Username=${username}, Password=${password}`);
+    return { sent: true, simulated: true };
+  }
+
+  try {
+    const info = await mailTransporter.sendMail({
+      from: `"KN Finance Operations" <${process.env.EMAIL_USER}>`,
+      to: recipient,
+      subject: 'KN Finance - Your Administrator Account Credentials',
+      text: textContent,
+      html: htmlContent
+    });
+
+    console.log(`✅ [EmailService] Admin credentials email sent successfully to ${recipient}:`, info.messageId);
+    return { sent: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`❌ [EmailService] Failed to send admin credentials email to ${recipient}:`, error.message);
+    return { sent: false, error: error.message };
+  }
+};
+

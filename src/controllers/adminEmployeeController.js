@@ -13,7 +13,7 @@ import {
  */
 export const listEmployees = async (req, res, next) => {
   try {
-    const { search, village, assignedOperationalArea, status, page, limit } = req.query;
+    const { search, village, assignedOperationalArea, status, page, limit, adminId } = req.query;
 
     const data = await getEmployees({
       search,
@@ -21,7 +21,9 @@ export const listEmployees = async (req, res, next) => {
       assignedOperationalArea,
       status,
       page,
-      limit
+      limit,
+      adminId,
+      user: req.user
     });
 
     return res.status(200).json({

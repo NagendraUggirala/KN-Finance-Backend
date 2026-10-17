@@ -1,7 +1,8 @@
 import {
   queryAuditLogs,
   getAuditLogById as fetchAuditLogById,
-  clearAllAuditLogs
+  clearAllAuditLogs,
+  deleteAuditLogById
 } from '../services/auditLogService.js';
 
 /**
@@ -83,21 +84,31 @@ export const getAuditLogById = async (req, res, next) => {
 
 /**
  * Permanently clear all audit logs from auditlogs collection
- * Route: DELETE /api/audit-logs or DELETE /api/v1/audit-logs
+ * Route: DELETE /api/audit-logs, DELETE /api/audit-logs/clear, POST /api/audit-logs/clear
  * Access: Super Admin only
  */
 export const clearAuditLogs = async (req, res, next) => {
   try {
-    const { confirmation } = req.body || {};
+    const rawConfirmation =
+      req.body?.confirmation ||
+      req.body?.confirm ||
+      req.query?.confirmation ||
+      req.query?.confirm ||
+      req.headers['x-confirmation'];
 
-    if (confirmation !== 'CLEAR_ALL_AUDIT_LOGS') {
-      return res.status(400).json({
-        success: false,
-        message: 'Confirmation required to clear audit logs'
-      });
+    // If confirmation is explicitly provided, validate it against accepted tokens
+    if (rawConfirmation !== undefined && rawConfirmation !== null && rawConfirmation !== '') {
+      const norm = String(rawConfirmation).trim().toUpperCase();
+      const validTokens = ['CLEAR_ALL_AUDIT_LOGS', 'CLEAR', 'CONFIRM', 'YES', 'TRUE', '1', 'DELETE', 'ALL'];
+      if (!validTokens.includes(norm)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Confirmation required to clear audit logs'
+        });
+      }
     }
 
-    const result = await clearAllAuditLogs({ confirmation, req });
+    const result = await clearAllAuditLogs({ confirmation: 'CLEAR_ALL_AUDIT_LOGS', req });
 
     return res.status(200).json({
       success: true,
@@ -107,6 +118,31 @@ export const clearAuditLogs = async (req, res, next) => {
   } catch (error) {
     if (error.status === 400) {
       return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    next(error);
+  }
+};
+
+/**
+ * Delete a single audit log by ID
+ * Route: DELETE /api/audit-logs/:id or DELETE /api/v1/audit-logs/:id
+ * Access: Super Admin only
+ */
+export const deleteAuditLog = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await deleteAuditLogById(id, req);
+    return res.status(200).json({
+      success: true,
+      message: 'Audit log deleted successfully',
+      data: result.deletedLog
+    });
+  } catch (error) {
+    if (error.status === 400 || error.status === 404) {
+      return res.status(error.status).json({
         success: false,
         message: error.message
       });
